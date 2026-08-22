@@ -98,6 +98,29 @@ export function fullColumnIndices(meta) {
   return volumetricIndices(meta, VOLUMETRIC_IDS);
 }
 
+// The weather viewer's default: a 3D boundary-layer ladder. Deep enough
+// (2 km) that the wind reads as a volume filling the space over the terrain,
+// shallow enough that most rungs sit inside the terrain-flow physics zone
+// (influence e-folds out over ~800 m AGL) — so the draping, updrafts, ridge
+// speed-up and lee wakes stay visible while the field is genuinely 3D. The
+// r^3 spawn bias puts about two thirds of the particles below ~150 m, where
+// the physics is strongest.
+export const AGL_LADDER_3D = [0.1, 25, 60, 120, 220, 380, 600, 900, 1400, 2000];
+
+// Model levels bracketing the 3D ladder over terrain from sea level to
+// 4.5 km: a 2 km-AGL rung over the Rockies is ~5 km ASL, which needs levels
+// up to 500 hPa to interpolate toward.
+export const BL3D_SOURCE_IDS = [
+  "10m", "80m", "1000", "950", "925", "900", "850", "800", "750", "700", "600", "500",
+];
+
+export function bl3dIndices(meta) {
+  return BL3D_SOURCE_IDS
+    .map((id) => meta.levels.find((l) => l.id === id))
+    .filter(Boolean)
+    .map((l) => l.index);
+}
+
 // Deep ladder for "Full column": same true-AGL treatment, up to jet level.
 // Starts at the surface so the column is continuous from the ground rather
 // than a separate deck overhead — with the old 10 m base the lowest rungs were

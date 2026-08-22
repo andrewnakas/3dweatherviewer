@@ -2,7 +2,7 @@
 
 import {
   levelName, drawLegend, drawRadarLegend, volumetricIndices, fullColumnIndices,
-  ladderSourceIndices, AGL_LADDER, AGL_LADDER_FULL,
+  ladderSourceIndices, bl3dIndices, AGL_LADDER, AGL_LADDER_FULL, AGL_LADDER_3D,
 } from "./atmosphere.js";
 import { dbzColor } from "./radarOverlay.js";
 
@@ -35,23 +35,38 @@ export function initUI(map, layer, meta, weather = null) {
     : layer.levelIndices[0]);
   sel.addEventListener("change", () => layer.setLevels([Number(sel.value)]));
 
-  // --- volumetric toggle ---
+  // --- volumetric toggle + wind mode ---
   const vol = $("volumetric");
   const full = $("full-column");
+  const gh = $("ground-hug");
+  // Three wind modes, resolved from the two checkboxes:
+  //   full column     -> 11 km ladder, upper-air levels
+  //   surface skin    -> 60 m ladder painted onto the ground (ground-hug)
+  //   3D boundary layer (default) -> 2 km ladder at true heights, where the
+  //   terrain-flow physics stays visible
   // With the AGL ladder the stack is the set of model levels the rungs
   // interpolate from, not the rungs themselves — returning the plain
   // volumetric list here left the low rungs without levels to bracket them.
   const stackIndices = () => {
     if (full.checked) return fullColumnIndices(meta);
-    return layer.useAglLadder ? ladderSourceIndices(meta) : volumetricIndices(meta);
+    if (!layer.useAglLadder) return volumetricIndices(meta);
+    return gh.checked ? ladderSourceIndices(meta) : bl3dIndices(meta);
+  };
+  const applyWindMode = () => {
+    layer.fullColumn = full.checked;
+    layer.groundHug = gh.checked && !full.checked;
+    layer.aglLadder = full.checked ? AGL_LADDER_FULL
+      : gh.checked ? AGL_LADDER : AGL_LADDER_3D;
+    if (vol.checked) layer.setLevels(stackIndices());
   };
   vol.checked = layer.volumetric;
-  // Browsers restore checkbox state across reloads, so this must be forced to
-  // match the layer. Left unsynced, a restored "Full column" tick swapped in
-  // the 11 km ladder while the layer still thought it was on the surface one —
-  // the wind then sat kilometres up and read as a ceiling.
+  // Browsers restore checkbox state across reloads, so these must be forced
+  // to match the layer. Left unsynced, a restored "Full column" tick swapped
+  // in the 11 km ladder while the layer still thought it was on the surface
+  // one — the wind then sat kilometres up and read as a ceiling.
   full.checked = !!layer.fullColumn;
-  layer.aglLadder = full.checked ? AGL_LADDER_FULL : AGL_LADDER;
+  gh.checked = !!layer.groundHug;
+  applyWindMode();
   sel.disabled = vol.checked;
   full.disabled = !vol.checked;
   vol.addEventListener("change", () => {
@@ -60,16 +75,8 @@ export function initUI(map, layer, meta, weather = null) {
     layer.volumetric = vol.checked;
     layer.setLevels(vol.checked ? stackIndices() : [Number(sel.value)]);
   });
-  full.addEventListener("change", () => {
-    layer.fullColumn = full.checked;
-    layer.aglLadder = full.checked ? AGL_LADDER_FULL : AGL_LADDER;
-    if (vol.checked) layer.setLevels(stackIndices());
-  });
-
-  // --- surface wind (paint the stack onto the ground) ---
-  const gh = $("ground-hug");
-  gh.checked = layer.groundHug;
-  gh.addEventListener("change", () => { layer.groundHug = gh.checked; });
+  full.addEventListener("change", applyWindMode);
+  gh.addEventListener("change", applyWindMode);
 
   // --- terrain flow physics ---
   const tf = $("terrain-flow");

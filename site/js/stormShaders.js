@@ -35,14 +35,20 @@ uniform vec2 u_wxTileScale;
 uniform vec2 u_wxClampMin;
 uniform vec2 u_wxClampMax;
 uniform vec2 u_radarOff;
+uniform vec2 u_cloudOff;    // cloud tile: G = cloud base (m ASL, 0 = none)
+uniform vec2 u_precipOff;   // precip tile: R = surface rate (sqrt mm/h)
 uniform float u_topMax;     // echoTop linear-encoding max (m)
 uniform float u_vilMax;     // VIL sqrt-encoding max (kg/m^2)
+uniform float u_baseMax;    // cloudBase linear-encoding max (m)
+uniform float u_rateMax;    // precipRate sqrt-encoding max (mm/h)
 
 out vec2 v_uv;              // x: -1..1 across, y: 0..1 ground->top
 out float v_dbz;
 out float v_vil;
 out float v_alpha;
 out float v_seed;
+out float v_baseFrac;       // cloud base as a fraction of the column height
+out float v_rain;           // 0..1: is precip actually reaching the ground?
 
 const float PI = 3.141592653589793;
 
@@ -85,6 +91,20 @@ void main() {
   float terr = terrainHeight(pos);
   float topAgl = topASL - terr;
   if (topAgl < 400.0) { collapse(); return; }
+
+  // The storm's own vertical placement: the volume lives between this cell's
+  // cloud base and its echo top. Below the base only a rain shaft carries
+  // signal, and only where surface precip actually falls — an elevated echo
+  // floats at its real height instead of standing on the terrain.
+  vec2 cuv = u_cloudOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
+  float baseByte = mix(texture(u_wxA, cuv), texture(u_wxB, cuv), u_wxMix).g;
+  float baseAgl = max(baseByte * 255.0 - 1.0, 0.0) / 254.0 * u_baseMax - terr;
+  v_baseFrac = baseByte * 255.0 < 0.5 ? 0.0
+    : clamp(baseAgl / topAgl, 0.0, 0.85);
+  vec2 puv = u_precipOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
+  float rateN = mix(texture(u_wxA, puv), texture(u_wxB, puv), u_wxMix).r;
+  float rate = rateN * rateN * u_rateMax; // mm/h
+  v_rain = smoothstep(0.05, 2.0, rate);
 
   float latP = u_north - pos.y * u_latSpan;
   float cellM = max(u_cell.x * u_lonSpan * 111320.0 * cos(radians(latP)),
@@ -135,6 +155,8 @@ in float v_dbz;
 in float v_vil;
 in float v_alpha;
 in float v_seed;
+in float v_baseFrac;
+in float v_rain;
 out vec4 outColor;
 
 uniform float u_opacity;
@@ -180,6 +202,12 @@ void main() {
   // denser cores: scale with VIL so a juicy cell reads solid
   float density = 0.16 + 0.2 * clamp(v_vil / 25.0, 0.0, 1.0);
 
-  float a = v_alpha * side * top * density * u_opacity;
+  // vertical placement: full volume from the cell's cloud base up to the
+  // echo top; below the base only a thinner rain shaft, and only where rain
+  // is actually reaching the ground
+  float aboveBase = smoothstep(v_baseFrac - 0.06, v_baseFrac + 0.02, v_uv.y);
+  float profile = max(aboveBase, v_rain * 0.45 * (1.0 - aboveBase));
+
+  float a = v_alpha * side * top * density * profile * u_opacity;
   outColor = vec4(color, 1.0) * a;
 }`;

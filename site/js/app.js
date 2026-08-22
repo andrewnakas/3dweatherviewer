@@ -10,7 +10,7 @@ import { PrecipLayer } from "./precipLayer.js";
 import { CloudLayer } from "./cloudLayer.js";
 import { StormLayer } from "./stormLayer.js";
 import { FrameManager } from "./frames.js";
-import { AGL_LADDER_FULL, fullColumnIndices } from "./atmosphere.js";
+import { AGL_LADDER_3D, bl3dIndices } from "./atmosphere.js";
 
 // The `?c=1` is deliberate. S3 only attaches Access-Control-Allow-Origin when
 // the request carries an Origin header, so a cached non-CORS copy of the same
@@ -135,14 +135,15 @@ async function main() {
     const layer = new WindLayer(map, meta, {
       exaggeration: 1,
       terrainPhysics: new URLSearchParams(location.search).get("tp") !== "0",
-      // The weather viewer defaults to the real 3D atmosphere: winds drawn at
-      // their true heights, full column to the jet stream — not the wind
-      // viewer's surface-skin mode (both still available in the panel).
+      // The weather viewer defaults to the 3D boundary layer: winds drawn at
+      // their true heights through the lowest 2 km, where the terrain-flow
+      // physics (draping, updrafts, lee wakes) stays visible. The wind
+      // viewer's surface-skin mode and the 11 km full column remain as
+      // panel toggles.
       groundHug: false,
+      aglLadder: AGL_LADDER_3D,
       onReady: () => {
-        layer.fullColumn = true;
-        layer.aglLadder = AGL_LADDER_FULL;
-        layer.setLevels(fullColumnIndices(meta));
+        layer.setLevels(bl3dIndices(meta));
         if (weather) {
           weather.storms = new StormLayer(map, meta, layer, weather.lighting,
             weather.wxShared, { grid: isMobile ? 64 : 96 });

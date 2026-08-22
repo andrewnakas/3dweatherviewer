@@ -99,11 +99,14 @@ export class StormLayer {
     gl.uniform2fv(U.u_wxTileScale, [1 / cols, 1 / rows]);
     gl.uniform2fv(U.u_wxClampMin, [0.5 / w.tile.width, 0.5 / w.tile.height]);
     gl.uniform2fv(U.u_wxClampMax, [1 - 0.5 / w.tile.width, 1 - 0.5 / w.tile.height]);
-    gl.uniform2fv(U.u_radarOff, [
-      (w.tiles.radar % cols) / cols, Math.floor(w.tiles.radar / cols) / rows,
-    ]);
+    const off = (i) => [(i % cols) / cols, Math.floor(i / cols) / rows];
+    gl.uniform2fv(U.u_radarOff, off(w.tiles.radar));
+    gl.uniform2fv(U.u_cloudOff, off(w.tiles.cloud));
+    gl.uniform2fv(U.u_precipOff, off(w.tiles.precip));
     gl.uniform1f(U.u_topMax, w.enc.echoTop.max);
     gl.uniform1f(U.u_vilMax, w.enc.vil.max);
+    gl.uniform1f(U.u_baseMax, w.enc.cloudBase.max);
+    gl.uniform1f(U.u_rateMax, w.enc.precipRate.max);
 
     const hi = this.meta.terrainHi;
     const terrTex = this.windLayer.frames?.terrainTex;
