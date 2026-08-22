@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>3D Weather Viewer — HRRR CONUS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛅</text></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <button id="panel-toggle" title="Show/hide controls">☰</button>
+
+  <div id="panel">
+    <h1>3D Weather Viewer</h1>
+    <div class="sub">NOAA HRRR · CONUS · <span id="init-time">loading…</span></div>
+
+    <label class="row">
+      <input type="checkbox" id="volumetric" checked> 3D volumetric (all levels)
+    </label>
+
+    <label class="row">
+      <input type="checkbox" id="terrain-flow" checked> Terrain flow (updrafts, ridge speed-up)
+    </label>
+
+    <label class="row">
+      <input type="checkbox" id="ground-hug" checked> Start the column at ground level
+    </label>
+
+    <label class="row">
+      <input type="checkbox" id="full-column"> Full column to jet stream (12 km)
+    </label>
+
+    <label for="level-select">Single level</label>
+    <select id="level-select" disabled></select>
+
+    <label for="alt-scale">Wind altitude scale <span id="alt-val">2×</span></label>
+    <input type="range" id="alt-scale" min="1" max="30" step="1" value="2">
+
+    <label for="particles-select">Particles</label>
+    <select id="particles-select">
+      <option value="16384">16k</option>
+      <option value="65536">65k</option>
+      <option value="262144" selected>262k</option>
+      <option value="1048576">1M</option>
+    </select>
+
+    <label for="exaggeration">Terrain exaggeration <span id="exag-val">1.0</span></label>
+    <input type="range" id="exaggeration" min="0" max="3" step="0.1" value="1">
+
+    <label for="speed-factor">Particle speed <span id="speed-val">1.0</span></label>
+    <input type="range" id="speed-factor" min="0.2" max="3" step="0.1" value="1">
+
+    <label for="y-offset">Wind height trim <span id="y-val">0 m</span></label>
+    <input type="range" id="y-offset" min="-12000" max="12000" step="50" value="0">
+    <input type="number" id="y-offset-num" step="10" value="0"
+           style="width:100%;margin-top:4px" aria-label="Wind height trim, metres">
+    <div class="hint" id="y-readout">ground — · camera — · trim —</div>
+
+    <label for="wind-gain">Wind strength <span id="wind-val">forecast</span></label>
+    <input type="range" id="wind-gain" min="1" max="6" step="0.5" value="1">
+    <div class="hint" id="wind-hint">Scales the real wind so terrain effects are easier to see. Not a forecast.</div>
+
+    <canvas id="legend" width="220" height="34"></canvas>
+
+    <div class="attrib">
+      Data: <a href="https://dynamical.org/catalog/noaa-hrrr-forecast-48-hour-virtual/" target="_blank">NOAA HRRR via dynamical.org</a><br>
+      Terrain: AWS Terrain Tiles · Map: © <a href="https://carto.com/attributions" target="_blank">CARTO</a>, © OpenStreetMap
+    </div>
+  </div>
+
+  <div id="pointcast" hidden>
+    <div id="pointcast-head">
+      <span id="pointcast-title">Wind profile</span>
+      <button id="pointcast-close" title="Close">✕</button>
+    </div>
+    <canvas id="pointcast-canvas"></canvas>
+    <div id="pointcast-tip"></div>
+  </div>
+
+  <div id="timebar">
+    <button id="play" title="Play/pause">▶</button>
+    <input type="range" id="time-slider" min="0" max="48" step="1" value="0">
+    <div id="time-label">+0 h</div>
+  </div>
+
+  <div id="error" hidden></div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
