@@ -7,6 +7,7 @@ Usage:
 import argparse
 import logging
 import os
+import resource
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,11 +15,15 @@ from pathlib import Path
 
 import numpy as np
 
-from config import LEAD_HOURS, LEVELS, PRESSURE_LEVELS, TILE_H, TILE_W, height_meters
-from encode import compute_scales, write_output
+from config import (
+    LEAD_HOURS, LEVELS, PRESSURE_LEVELS, TILE_H, TILE_W,
+    WX_CONDENSATE_LEVELS, height_meters,
+)
+from encode import compute_scales, write_output, wx_meta_block
 from hrrr_source import open_datasets, pick_init
 from reproject import build_index_map, regrid, rotate_winds
 from terrain import build_terrain_fields, write_terrain_png
+from weather import build_wx_frame
 
 log = logging.getLogger("build_frames")
 
@@ -33,8 +38,9 @@ ALLOW_TERRAIN_FALLBACK = os.environ.get("TERRAIN_FALLBACK_OK") == "1"
 def build_frame(sfc, prs, init, lead, index_map, attempts=3):
     """Read + regrid + rotate all levels for one lead hour.
 
-    Returns (frame, valid): (nlev, TILE_H, TILE_W, 3) float16 [u, v, omega]
-    and a (nlev, TILE_H, TILE_W) above-ground/in-domain mask.
+    Returns (frame, valid, wx): (nlev, TILE_H, TILE_W, 3) float16 [u, v, omega],
+    a (nlev, TILE_H, TILE_W) above-ground/in-domain mask, and the quantized
+    uint8 weather atlas (see weather.py).
     """
     last_err = None
     for attempt in range(attempts):
@@ -79,7 +85,11 @@ def _build_frame(sfc, prs, init, lead, index_map):
 
     if np.isnan(frame[:, TILE_H // 2, TILE_W // 2, :2]).any():
         raise ValueError(f"lead {lead}: NaN wind at domain center")
-    return frame, valid
+
+    # Weather atlas rides in the same worker pass, reusing this lead's psfc.
+    # Quantized to uint8 here (fixed scales) so 49 leads cost ~230 MB total.
+    wx = build_wx_frame(sfc_t, prs_t, index_map, psfc)
+    return frame, valid, wx
 
 
 def read_heights(prs, init):
@@ -110,7 +120,7 @@ def main():
 
     t0 = time.time()
     sfc, prs = open_datasets()
-    init = pick_init(prs, args.init)
+    init = pick_init(prs, args.init, sfc=sfc)
     init_iso = np.datetime_as_string(init, unit="s") + "Z"
     log.info("init=%s leads=%s", init_iso, leads)
 
@@ -153,11 +163,19 @@ def main():
         for fut in as_completed(futs):
             lead = futs[fut]
             frames_by_lead[lead] = fut.result()
-            log.info("lead %02d done (%d/%d)", lead, len(frames_by_lead), len(leads))
+            # ru_maxrss is KiB on Linux; the CI runner has 16 GB and this build
+            # runs close to it, so keep the watermark visible in every log.
+            rss_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1048576
+            log.info("lead %02d done (%d/%d), peak RSS %.1f GB",
+                     lead, len(frames_by_lead), len(leads), rss_gb)
 
-    scales = compute_scales([f for f, _ in frames_by_lead.values()])
+    scales = compute_scales([f for f, _, _ in frames_by_lead.values()])
+    heights_by_plev = {
+        p: heights[2 + PRESSURE_LEVELS.index(p)] for p in WX_CONDENSATE_LEVELS
+    }
     meta = write_output(
-        args.out, frames_by_lead, scales, init_iso, heights, terrain, terrain_hi_meta
+        args.out, frames_by_lead, scales, init_iso, heights, terrain,
+        terrain_hi_meta, weather=wx_meta_block(heights_by_plev),
     )
 
     log.info(

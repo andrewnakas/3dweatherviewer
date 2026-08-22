@@ -17,23 +17,25 @@ def open_datasets():
     return sfc, prs
 
 
-def pick_init(prs, requested: str | None = None, max_steps_back: int = 4):
+def pick_init(prs, requested: str | None = None, max_steps_back: int = 4, sfc=None):
     """Choose an init_time whose final lead hour is actually readable.
 
     The virtual dataset lists an init as soon as ingest starts; the last lead
     hours may not exist yet. Probe lead 48 and step back 6h until a complete
-    init is found.
+    init is found. When sfc is given, the surface group is probed too, so an
+    init with wind but missing weather fields is rejected rather than shipping
+    black weather tiles.
     """
     if requested and requested != "auto":
         init = np.datetime64(requested)
-        _probe(prs, init)
+        _probe(prs, init, sfc)
         return init
 
     inits = prs.init_time.values
     for i in range(1, max_steps_back + 2):
         init = inits[-i]
         try:
-            _probe(prs, init)
+            _probe(prs, init, sfc)
             log.info("using init %s", init)
             return init
         except Exception as e:  # noqa: BLE001 - any read failure means incomplete
@@ -41,7 +43,7 @@ def pick_init(prs, requested: str | None = None, max_steps_back: int = 4):
     raise RuntimeError(f"no complete init found in last {max_steps_back + 1} cycles")
 
 
-def _probe(prs, init):
+def _probe(prs, init, sfc=None):
     sl = (
         prs.wind_u.sel(init_time=init, pressure_level=500)
         .isel(lead_time=-1, x=slice(890, 910), y=slice(520, 540))
@@ -49,3 +51,13 @@ def _probe(prs, init):
     )
     if np.isnan(sl).all():
         raise ValueError("probe slice is all-NaN")
+    if sfc is not None:
+        # t2m rather than reflectivity: reflectivity is legitimately NaN/absent
+        # in clear air, temperature never is.
+        sl2 = (
+            sfc.temperature_2m.sel(init_time=init)
+            .isel(lead_time=-1, x=slice(890, 910), y=slice(520, 540))
+            .values
+        )
+        if np.isnan(sl2).all():
+            raise ValueError("surface probe slice is all-NaN")

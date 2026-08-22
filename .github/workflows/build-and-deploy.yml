@@ -12,6 +12,10 @@ on:
         description: 'Lead hours subset for a quick test build, e.g. "0 6 12". Empty = all 0-48.'
         default: ''
         required: false
+      workers:
+        description: 'Parallel lead-hour workers. Drop to 3 if the runner runs out of memory.'
+        default: '4'
+        required: false
 
 permissions:
   contents: read
@@ -25,7 +29,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -36,11 +40,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Build wind frames
+      - name: Build weather frames
         run: |
           LEADS='${{ github.event.inputs.leads }}'
+          WORKERS='${{ github.event.inputs.workers }}'
           PYTHONPATH=pipeline python pipeline/build_frames.py \
-            --out site/data --workers 4 ${LEADS:+--leads "$LEADS"}
+            --out site/data --workers "${WORKERS:-4}" ${LEADS:+--leads "$LEADS"}
 
       - uses: actions/configure-pages@v4
 
