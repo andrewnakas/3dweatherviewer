@@ -111,6 +111,27 @@ export function levelName(level) {
   return `${level.value} hPa (~${km} km)`;
 }
 
+// Reflectivity legend for the radar overlay (colors from radarOverlay.js).
+export function drawRadarLegend(canvas, dbzColor) {
+  const ctx = canvas.getContext("2d");
+  const { width: w, height: h } = canvas;
+  ctx.clearRect(0, 0, w, h);
+  const lo = 5, hi = 75;
+  for (let x = 0; x < w; x++) {
+    const c = dbzColor(lo + (x / (w - 1)) * (hi - lo));
+    if (!c) continue;
+    ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.fillRect(x, 0, 1, 14);
+  }
+  ctx.fillStyle = "#a8b6ca";
+  ctx.font = "9px sans-serif";
+  for (const d of [5, 20, 35, 50, 65]) {
+    const x = Math.min(((d - lo) / (hi - lo)) * w, w - 12);
+    ctx.fillText(String(d), x, 24);
+  }
+  ctx.fillText("dBZ", w - 22, 33);
+}
+
 export function drawLegend(canvas) {
   const ctx = canvas.getContext("2d");
   const { width: w, height: h } = canvas;

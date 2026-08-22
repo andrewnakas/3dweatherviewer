@@ -1,8 +1,14 @@
-// Bootstrap: map + terrain + wind layer + UI.
+// Bootstrap: map + terrain + wind/precip/cloud layers + radar + sun + UI.
 
 import { WindLayer } from "./windLayer.js";
 import { initUI } from "./ui.js";
 import { PointCast } from "./pointcast.js";
+import { CpuAtlas } from "./cpuAtlas.js";
+import { RadarOverlay } from "./radarOverlay.js";
+import { Lighting } from "./lighting.js";
+import { PrecipLayer } from "./precipLayer.js";
+import { CloudLayer } from "./cloudLayer.js";
+import { FrameManager } from "./frames.js";
 
 // The `?c=1` is deliberate. S3 only attaches Access-Control-Allow-Origin when
 // the request carries an Origin header, so a cached non-CORS copy of the same
@@ -94,17 +100,65 @@ async function main() {
     });
     map.setTerrain({ source: "terrain-dem", exaggeration: 1 });
 
+    const lowmem = !!sessionStorage.getItem("lowmem");
+
+    // Weather stack (radar / sun / precip / clouds) — only when the data
+    // build carries a weather atlas, so the site still works against a
+    // wind-only build.
+    let weather = null;
+    if (meta.weather?.frames?.length) {
+      const wxCpu = new CpuAtlas({
+        frames: meta.weather.frames, atlas: meta.weather.atlas,
+        tile: meta.weather.tile, initTime: meta.init_time,
+      });
+      // One GPU FrameManager for the weather PNGs, shared by precip + clouds
+      // (custom layers share the map's GL context).
+      const wxShared = {
+        fm: null,
+        get(gl) {
+          this.fm ??= new FrameManager(gl, {
+            init_time: meta.init_time, frames: meta.weather.frames,
+          });
+          return this.fm;
+        },
+      };
+      weather = {
+        wxCpu,
+        wxShared,
+        lighting: new Lighting(map, meta, wxCpu),
+        radar: new RadarOverlay(map, meta, wxCpu),
+      };
+    }
+
     const layer = new WindLayer(map, meta, {
       exaggeration: 1,
       terrainPhysics: new URLSearchParams(location.search).get("tp") !== "0",
       onReady: () => {
-        initUI(map, layer, meta);
-        new PointCast(map, layer, meta);
+        if (weather) {
+          weather.precip = new PrecipLayer(map, meta, layer, weather.lighting,
+            weather.wxShared, { particleCount: isMobile ? 16384 : 65536 });
+          weather.clouds = new CloudLayer(map, meta, layer, weather.lighting,
+            weather.wxShared, { grid: isMobile ? 44 : 72 });
+          if (lowmem) {
+            weather.precip.enabled = false;
+            weather.clouds.enabled = false;
+          }
+          try {
+            map.addLayer(weather.precip);
+            map.addLayer(weather.clouds);
+          } catch (e) {
+            console.warn("weather layers unavailable:", e.message);
+          }
+          weather.radar.setTime(0); // first paint before any slider move
+          window.__weather = weather; // debugging hook
+        }
+        initUI(map, layer, meta, weather);
+        new PointCast(map, layer, meta, weather?.wxCpu);
       },
     });
     window.__windLayer = layer; // debugging hook
     if (isMobile) layer.particleCount = 65536;
-    if (sessionStorage.getItem("lowmem")) layer.particleCount = 16384;
+    if (lowmem) layer.particleCount = 16384;
     try {
       map.addLayer(layer);
     } catch (e) {

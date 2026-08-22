@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>3D Weather Viewer — HRRR CONUS</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛅</text></svg>">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -16,6 +16,35 @@
   <div id="panel">
     <h1>3D Weather Viewer</h1>
     <div class="sub">NOAA HRRR · CONUS · <span id="init-time">loading…</span></div>
+
+    <div id="weather-controls" hidden>
+      <div class="section-title">Weather</div>
+      <label class="row">
+        <input type="checkbox" id="toggle-clouds" checked> Clouds
+      </label>
+      <label class="row">
+        <input type="checkbox" id="toggle-precip" checked> Precipitation
+      </label>
+      <label class="row">
+        <input type="checkbox" id="toggle-radar" checked> Radar
+      </label>
+      <label class="row">
+        <input type="checkbox" id="toggle-sun" checked> Sun &amp; day/night lighting
+      </label>
+      <div class="hint" id="sun-readout"></div>
+
+      <label for="radar-opacity">Radar opacity <span id="radar-op-val">0.6</span></label>
+      <input type="range" id="radar-opacity" min="0" max="1" step="0.05" value="0.6">
+
+      <label for="cloud-density">Cloud density <span id="cloud-den-val">1.0×</span></label>
+      <input type="range" id="cloud-density" min="0.2" max="2" step="0.1" value="1">
+
+      <label for="precip-fall">Precip fall speed <span id="precip-fall-val">15×</span></label>
+      <input type="range" id="precip-fall" min="1" max="40" step="1" value="15">
+
+      <canvas id="radar-legend" width="220" height="34"></canvas>
+      <div class="section-title">Wind</div>
+    </div>
 
     <label class="row">
       <input type="checkbox" id="volumetric" checked> 3D volumetric (all levels)
@@ -73,9 +102,10 @@
 
   <div id="pointcast" hidden>
     <div id="pointcast-head">
-      <span id="pointcast-title">Wind profile</span>
+      <span id="pointcast-title">Conditions</span>
       <button id="pointcast-close" title="Close">✕</button>
     </div>
+    <div id="pointcast-conditions" hidden></div>
     <canvas id="pointcast-canvas"></canvas>
     <div id="pointcast-tip"></div>
   </div>
@@ -88,7 +118,7 @@
 
   <div id="error" hidden></div>
 
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="vendor/maplibre-gl.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

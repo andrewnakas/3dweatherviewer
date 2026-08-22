@@ -1,11 +1,12 @@
 // DOM control wiring.
 
 import {
-  levelName, drawLegend, volumetricIndices, fullColumnIndices, ladderSourceIndices,
-  AGL_LADDER, AGL_LADDER_FULL,
+  levelName, drawLegend, drawRadarLegend, volumetricIndices, fullColumnIndices,
+  ladderSourceIndices, AGL_LADDER, AGL_LADDER_FULL,
 } from "./atmosphere.js";
+import { dbzColor } from "./radarOverlay.js";
 
-export function initUI(map, layer, meta) {
+export function initUI(map, layer, meta, weather = null) {
   const $ = (id) => document.getElementById(id);
 
   // --- header ---
@@ -224,4 +225,64 @@ export function initUI(map, layer, meta) {
 
   setTime(0);
   drawLegend($("legend"));
+
+  // --- weather stack (radar / clouds / precip / sun) ---
+  if (weather) {
+    $("weather-controls").hidden = false;
+    drawRadarLegend($("radar-legend"), dbzColor);
+
+    const tClouds = $("toggle-clouds");
+    const tPrecip = $("toggle-precip");
+    const tRadar = $("toggle-radar");
+    const tSun = $("toggle-sun");
+    // Force checkbox state to match the layers (browsers restore ticks across
+    // reloads), including the lowmem path that starts with them off.
+    tClouds.checked = weather.clouds?.enabled ?? false;
+    tPrecip.checked = weather.precip?.enabled ?? false;
+    tRadar.checked = true;
+    tSun.checked = weather.lighting.enabled;
+
+    tClouds.addEventListener("change", () => {
+      if (weather.clouds) weather.clouds.enabled = tClouds.checked;
+      map.triggerRepaint();
+    });
+    tPrecip.addEventListener("change", () => {
+      if (weather.precip) weather.precip.enabled = tPrecip.checked;
+      map.triggerRepaint();
+    });
+    tRadar.addEventListener("change", () => weather.radar.setVisible(tRadar.checked));
+    tSun.addEventListener("change", () => weather.lighting.setEnabled(tSun.checked));
+
+    const rop = $("radar-opacity");
+    rop.value = String(weather.radar.opacity);
+    $("radar-op-val").textContent = Number(rop.value).toFixed(2);
+    rop.addEventListener("input", () => {
+      weather.radar.setOpacity(Number(rop.value));
+      $("radar-op-val").textContent = Number(rop.value).toFixed(2);
+    });
+
+    const cden = $("cloud-density");
+    cden.addEventListener("input", () => {
+      if (weather.clouds) weather.clouds.density = Number(cden.value);
+      $("cloud-den-val").textContent = `${Number(cden.value).toFixed(1)}×`;
+      map.triggerRepaint();
+    });
+
+    const pfall = $("precip-fall");
+    pfall.addEventListener("input", () => {
+      if (weather.precip) weather.precip.fallGain = Number(pfall.value);
+      $("precip-fall-val").textContent = `${pfall.value}×`;
+    });
+
+    // small sun readout under the toggle: elevation + local phase
+    const sunOut = $("sun-readout");
+    const phase = (el) => el > 10 ? "day" : el > 0 ? "golden hour"
+      : el > -6 ? "civil twilight" : el > -12 ? "twilight" : "night";
+    setInterval(() => {
+      const s = weather.lighting.state;
+      if (s?.elevationDeg == null) return;
+      sunOut.textContent =
+        `sun ${s.elevationDeg >= 0 ? "+" : ""}${s.elevationDeg.toFixed(0)}° · ${phase(s.elevationDeg)}`;
+    }, 1000);
+  }
 }
