@@ -197,7 +197,7 @@ void main() {
   float vshade = mix(0.72, 1.05, s);  // darker toward the deck's base
   vec3 lit = (u_ambient * 0.55 + diffuse * 0.6 * sunUp) * u_sunColor;
   v_color = clamp(lit * vshade, 0.0, 1.4) * vec3(0.98, 0.99, 1.0);
-  v_alpha = 0.24 * fade * edge;
+  v_alpha = 0.28 * fade * edge;
   if (v_alpha < 0.004) collapse();
 }`;
 

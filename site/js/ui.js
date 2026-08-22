@@ -233,17 +233,23 @@ export function initUI(map, layer, meta, weather = null) {
 
     const tClouds = $("toggle-clouds");
     const tPrecip = $("toggle-precip");
+    const tStorms = $("toggle-storms");
     const tRadar = $("toggle-radar");
     const tSun = $("toggle-sun");
     // Force checkbox state to match the layers (browsers restore ticks across
     // reloads), including the lowmem path that starts with them off.
     tClouds.checked = weather.clouds?.enabled ?? false;
     tPrecip.checked = weather.precip?.enabled ?? false;
+    tStorms.checked = weather.storms?.enabled ?? false;
     tRadar.checked = true;
     tSun.checked = weather.lighting.enabled;
 
     tClouds.addEventListener("change", () => {
       if (weather.clouds) weather.clouds.enabled = tClouds.checked;
+      map.triggerRepaint();
+    });
+    tStorms.addEventListener("change", () => {
+      if (weather.storms) weather.storms.enabled = tStorms.checked;
       map.triggerRepaint();
     });
     tPrecip.addEventListener("change", () => {

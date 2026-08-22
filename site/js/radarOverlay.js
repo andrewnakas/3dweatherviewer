@@ -34,7 +34,9 @@ export class RadarOverlay {
     this.map = map;
     this.meta = meta;
     this.wx = wxAtlas; // shared CpuAtlas over the weather frames
-    this.opacity = 0.62;
+    // Modest default: the drape is map context now — the 3D storm-cell layer
+    // carries the volumetric read of the radar.
+    this.opacity = 0.5;
     this.lastLead = null;
     this.added = false;
     this._pending = null;

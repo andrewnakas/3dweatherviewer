@@ -8,7 +8,9 @@ import { RadarOverlay } from "./radarOverlay.js";
 import { Lighting } from "./lighting.js";
 import { PrecipLayer } from "./precipLayer.js";
 import { CloudLayer } from "./cloudLayer.js";
+import { StormLayer } from "./stormLayer.js";
 import { FrameManager } from "./frames.js";
+import { AGL_LADDER_FULL, fullColumnIndices } from "./atmosphere.js";
 
 // The `?c=1` is deliberate. S3 only attaches Access-Control-Allow-Origin when
 // the request carries an Origin header, so a cached non-CORS copy of the same
@@ -133,8 +135,17 @@ async function main() {
     const layer = new WindLayer(map, meta, {
       exaggeration: 1,
       terrainPhysics: new URLSearchParams(location.search).get("tp") !== "0",
+      // The weather viewer defaults to the real 3D atmosphere: winds drawn at
+      // their true heights, full column to the jet stream — not the wind
+      // viewer's surface-skin mode (both still available in the panel).
+      groundHug: false,
       onReady: () => {
+        layer.fullColumn = true;
+        layer.aglLadder = AGL_LADDER_FULL;
+        layer.setLevels(fullColumnIndices(meta));
         if (weather) {
+          weather.storms = new StormLayer(map, meta, layer, weather.lighting,
+            weather.wxShared, { grid: isMobile ? 64 : 96 });
           weather.precip = new PrecipLayer(map, meta, layer, weather.lighting,
             weather.wxShared, { particleCount: isMobile ? 16384 : 65536 });
           weather.clouds = new CloudLayer(map, meta, layer, weather.lighting,
@@ -142,8 +153,10 @@ async function main() {
           if (lowmem) {
             weather.precip.enabled = false;
             weather.clouds.enabled = false;
+            weather.storms.enabled = false;
           }
           try {
+            map.addLayer(weather.storms);
             map.addLayer(weather.precip);
             map.addLayer(weather.clouds);
           } catch (e) {

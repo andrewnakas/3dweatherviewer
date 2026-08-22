@@ -110,6 +110,28 @@ export function computeSpawnBounds(map, b) {
   return { min: [0, 0], max: [1, 1] };
 }
 
+// Absolute world-space lattice for stateless billboard layers (clouds, storm
+// cells). Cells are FIXED in the world — baseKm at typical zooms, doubling in
+// power-of-two tiers when the view outgrows the G x G grid — so the objects
+// derived from cell coordinates stay pinned to the ground as the camera pans
+// and zooms. A camera-relative lattice re-anchors every frame, which reads as
+// a texture pasted over the terrain instead of things IN the scene.
+export function tieredLattice(spawn, G, baseKm, b) {
+  const lonSpan = b.east - b.west;
+  const latSpan = b.north - b.south;
+  const refCos = Math.cos((38 * Math.PI) / 180); // fixed ref latitude: cells must not resize on pan
+  const baseX = baseKm / (lonSpan * 111.32 * refCos);
+  const baseY = baseKm / (latSpan * 110.54);
+  const spanX = spawn.max[0] - spawn.min[0];
+  const spanY = spawn.max[1] - spawn.min[1];
+  const tier = Math.pow(2, Math.max(0, Math.ceil(Math.log2(
+    Math.max(spanX / (G * baseX), spanY / (G * baseY), 1e-9)
+  ))));
+  const cell = [baseX * tier, baseY * tier];
+  const ic0 = [Math.floor(spawn.min[0] / cell[0]), Math.floor(spawn.min[1] / cell[1])];
+  return { cell, ic0 };
+}
+
 // Camera eye point in normalized domain coords + altitude (m ASL), for the
 // terrain occlusion raymarch. Falls back to "occlusion off" when the transform
 // cannot provide it.

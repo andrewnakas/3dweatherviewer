@@ -43,9 +43,12 @@ jobs:
       - name: Build weather frames
         run: |
           LEADS='${{ github.event.inputs.leads }}'
-          # TEMPORARY (first deploy): default push builds to a 3-lead subset
-          # so the page is testable in minutes; revert for full 0-48 builds.
-          LEADS="${LEADS:-0 6 12}"
+          # Push builds deploy a quick 3-lead subset so code changes are
+          # testable in minutes. Scheduled runs — and manual runs without a
+          # subset — build the full 0-48 h forecast.
+          if [ -z "$LEADS" ] && [ "${{ github.event_name }}" = "push" ]; then
+            LEADS="0 6 12"
+          fi
           WORKERS='${{ github.event.inputs.workers }}'
           PYTHONPATH=pipeline python pipeline/build_frames.py \
             --out site/data --workers "${WORKERS:-4}" ${LEADS:+--leads "$LEADS"}
