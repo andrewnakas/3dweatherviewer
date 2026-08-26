@@ -204,9 +204,12 @@ void main() {
                     u_cell.y * u_latSpan * 110540.0);
   float depth = clamp((top - base) / 3000.0, 0.4, 1.6);
   float radius = mix(500.0, 1500.0, hash12(jitterKey + 23.1)) * depth;
-  radius = clamp(max(radius, cellM * 0.42), 250.0, 26000.0);
   radius *= (1.0 + 0.5 * highDeck + 0.25 * rf)
           * (1.0 + 0.05 * sin(u_time * 0.6 + v_seed * 37.0) * (0.3 + rf));
+  // Puffs must fill their lattice cell at EVERY zoom: the cell grows with the
+  // LOD tier, so a fixed metre cap turned a wide view into scattered dots
+  // with continent-sized gaps between them.
+  radius = clamp(max(radius, cellM * 0.5), 150.0, cellM * 1.15);
 
   float lon = u_west + pos.x * u_lonSpan;
   float mx = (lon + 180.0) / 360.0;

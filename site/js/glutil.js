@@ -124,9 +124,12 @@ export function tieredLattice(spawn, G, baseKm, b) {
   const baseY = baseKm / (latSpan * 110.54);
   const spanX = spawn.max[0] - spawn.min[0];
   const spanY = spawn.max[1] - spawn.min[1];
-  const tier = Math.pow(2, Math.max(0, Math.ceil(Math.log2(
-    Math.max(spanX / (G * baseX), spanY / (G * baseY), 1e-9)
-  ))));
+  // Tiers run BOTH ways from the base cell. Zoomed out they double until the
+  // G x G grid still spans the view (otherwise the field ends mid-screen);
+  // zoomed in they halve, so a close-up gets fine detail instead of a couple
+  // of cells the size of the whole viewport. Bounds keep the cell sane.
+  const need = Math.max(spanX / (G * baseX), spanY / (G * baseY), 1e-9);
+  const tier = Math.pow(2, Math.min(8, Math.max(-4, Math.ceil(Math.log2(need)))));
   const cell = [baseX * tier, baseY * tier];
   const ic0 = [Math.floor(spawn.min[0] / cell[0]), Math.floor(spawn.min[1] / cell[1])];
   return { cell, ic0 };

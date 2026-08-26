@@ -468,12 +468,28 @@ export class WindLayer {
       else if (!t) mapExag = 0;   // terrain off: the map draws flat ground
     } catch { /* keep our own value */ }
     gl.uniform1f(D.u_exagMerc, m2merc * mapExag);
+    // Metres of ground per screen pixel — the scale everything visual has to
+    // be measured against.
+    const mppNow = 156543.03392 * Math.cos((center.lat * Math.PI) / 180)
+      / Math.pow(2, this.map.getZoom());
     // Streak length is in units of the last frame's movement, so it already
-    // scales with wind speed and dt. Growing it with zoom on top of that just
-    // turns the field into long rakes, especially at high wind gain.
-    gl.uniform1f(D.u_streak, 4.0);
+    // scales with wind speed and dt — growing it with zoom on top of that
+    // turns the close-in field into long rakes. But dt SATURATES at 90 s
+    // while metres-per-pixel keeps doubling as you zoom out, so past about
+    // zoom 6 a streak falls under one pixel and the flow disappears from a
+    // regional view. Boost only once the ground scale passes the close-in
+    // reference, which leaves the near view exactly as it was and keeps the
+    // wind readable as short dashes all the way out to the full domain.
+    const streakBoost = Math.min(10, Math.max(1, mppNow / 200));
+    gl.uniform1f(D.u_streak, 4.0 * streakBoost);
     gl.uniform1f(D.u_maxAge, MAX_AGE);
-    gl.uniform1f(D.u_opacity, this.opacity);
+    // Longer strokes lay down proportionally more ink, and the particle count
+    // does not drop when you zoom out (the spawn box always fills the view),
+    // so a continental view saturated into a solid blue carpet that buried
+    // the terrain and the clouds. Thin the strokes as they lengthen to hold
+    // the total ink roughly constant, and the flow stays a field of dashes.
+    const inkFade = Math.max(0.5, 1 / (1 + 0.5 * (streakBoost - 1)));
+    gl.uniform1f(D.u_opacity, this.opacity * inkFade);
     gl.uniform1f(D.u_windGain, this.windGain);
     // Height of the lowest rung, subtracted so the column starts on the ground.
     gl.uniform1f(D.u_ladderBase, this.groundHug ? (this.aglLadder[0] ?? 0) : 0);
@@ -482,13 +498,10 @@ export class WindLayer {
     // vertical spread only reappears with the 3D column.
     gl.uniform1f(D.u_groundLock, this.groundHug ? 1.0 : 0.0);
     // Clearance over the terrain mesh, in metres of ground. Tied to the size
-    // of a screen pixel so it stays a couple of pixels at any zoom: enough to
-    // avoid z-fighting and not be swallowed by the hillside, small enough that
-    // the wind still reads as painted on the surface.
-    const mppNow = 156543.03392 * Math.cos((center.lat * Math.PI) / 180)
-      / Math.pow(2, this.map.getZoom());
-    // Just enough to clear the terrain mesh — a fraction of a screen pixel of
-    // ground. Anything larger becomes a visible gap under the wind.
+    // of a screen pixel (mppNow above) so it stays a fraction of a pixel at
+    // any zoom: enough to avoid z-fighting and not be swallowed by the
+    // hillside, small enough that the wind still reads as painted on the
+    // surface. Anything larger becomes a visible gap under the wind.
     gl.uniform1f(D.u_surfaceLift, Math.min(4, Math.max(0.5, mppNow * 0.5)));
     gl.uniform1i(D.u_stateSize, sys.size);
     this.setTerrainUniforms(gl, D, 7);
