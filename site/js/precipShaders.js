@@ -280,7 +280,7 @@ void main() {
   vec3 color;
   if (u_mode == 0) {
     color = mix(rain, freezing, step(0.5, v_freezing));
-    a *= 0.55;
+    a *= 0.68;
   } else {
     color = snow;
     // round soft flake

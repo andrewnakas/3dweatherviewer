@@ -284,6 +284,7 @@ export function initUI(map, layer, meta, weather = null) {
     });
     tPrecip.addEventListener("change", () => {
       if (weather.precip) weather.precip.enabled = tPrecip.checked;
+      if (weather.rain) weather.rain.enabled = tPrecip.checked;
       map.triggerRepaint();
     });
     tRadar.addEventListener("change", () => weather.radar.setVisible(tRadar.checked));

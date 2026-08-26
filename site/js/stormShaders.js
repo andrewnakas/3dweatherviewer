@@ -42,6 +42,11 @@ uniform float u_vilMax;     // VIL sqrt-encoding max (kg/m^2)
 uniform float u_baseMax;    // cloudBase linear-encoding max (m)
 uniform float u_rateMax;    // precipRate sqrt-encoding max (mm/h)
 
+// 0 = dBZ towers (the radar volume); 1 = rainfall curtains (soft streaked
+// shafts from each raining cloud's base down to the ground, driven by the
+// forecast precip rate and phase)
+uniform int u_variant;
+
 out vec2 v_uv;              // x: -1..1 across, y: 0..1 ground->top
 out float v_dbz;
 out float v_vil;
@@ -49,6 +54,7 @@ out float v_alpha;
 out float v_seed;
 out float v_baseFrac;       // cloud base as a fraction of the column height
 out float v_rain;           // 0..1: is precip actually reaching the ground?
+out float v_frozen;         // 0..1 frozen fraction (snow whitens the shaft)
 
 const float PI = 3.141592653589793;
 
@@ -79,36 +85,42 @@ void main() {
   if (pos.x < 0.0 || pos.x > 1.0 || pos.y < 0.0 || pos.y > 1.0) { collapse(); return; }
   v_seed = hash12(jitterKey + 9.7);
 
-  vec2 uv = u_radarOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
-  vec4 rad = mix(texture(u_wxA, uv), texture(u_wxB, uv), u_wxMix);
+  vec2 tuv = clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
+  vec4 rad = mix(texture(u_wxA, u_radarOff + tuv), texture(u_wxB, u_radarOff + tuv), u_wxMix);
   if (rad.a < 0.5) { collapse(); return; }
   v_dbz = -10.0 + max(rad.r * 255.0 - 1.0, 0.0) / 254.0 * 85.0;
   float topASL = max(rad.g * 255.0 - 1.0, 0.0) / 254.0 * u_topMax;
   v_vil = rad.b * rad.b * u_vilMax;
-  // Only real echoes stand up as towers; weak returns stay with the drape.
-  if (v_dbz < 18.0 || rad.g * 255.0 < 0.5) { collapse(); return; }
 
   float terr = terrainHeight(pos);
-  float topAgl = topASL - terr;
-  if (topAgl < 400.0) { collapse(); return; }
-
-  // The storm's own vertical placement: the volume lives between this cell's
-  // cloud base and its echo top. Below the base only a rain shaft carries
-  // signal, and only where surface precip actually falls — an elevated echo
-  // floats at its real height instead of standing on the terrain.
-  vec2 cuv = u_cloudOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
-  float baseByte = mix(texture(u_wxA, cuv), texture(u_wxB, cuv), u_wxMix).g;
+  float baseByte = mix(texture(u_wxA, u_cloudOff + tuv), texture(u_wxB, u_cloudOff + tuv), u_wxMix).g;
   float baseAgl = baseByte * u_baseMax - terr; // infilled, plain linear
-  v_baseFrac = clamp(baseAgl / topAgl, 0.0, 0.85);
-  vec2 puv = u_precipOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
-  float rateN = mix(texture(u_wxA, puv), texture(u_wxB, puv), u_wxMix).r;
-  float rate = rateN * rateN * u_rateMax; // mm/h
+  vec4 pcp = mix(texture(u_wxA, u_precipOff + tuv), texture(u_wxB, u_precipOff + tuv), u_wxMix);
+  float rate = pcp.r * pcp.r * u_rateMax; // mm/h
   v_rain = smoothstep(0.05, 2.0, rate);
+  v_frozen = pcp.g;
+
+  float topAgl;
+  if (u_variant == 1) {
+    // Rainfall curtain: from just inside the cloud base down to the ground,
+    // only where the forecast says precip is actually falling.
+    if (rate < 0.05) { collapse(); return; }
+    topAgl = clamp(baseAgl * 1.06, 300.0, 7000.0);
+    v_baseFrac = 1.0;
+  } else {
+    // dBZ tower: real echoes only, standing between the cell's cloud base
+    // and its echo top — an elevated echo floats at its real height, with a
+    // rain shaft below the base only where rain reaches the ground.
+    if (v_dbz < 18.0 || rad.g * 255.0 < 0.5) { collapse(); return; }
+    topAgl = topASL - terr;
+    if (topAgl < 400.0) { collapse(); return; }
+    v_baseFrac = clamp(baseAgl / topAgl, 0.0, 0.85);
+  }
 
   float latP = u_north - pos.y * u_latSpan;
   float cellM = max(u_cell.x * u_lonSpan * 111320.0 * cos(radians(latP)),
                     u_cell.y * u_latSpan * 110540.0);
-  float halfW = cellM * 0.62;
+  float halfW = cellM * (u_variant == 1 ? 0.55 : 0.62);
 
   float lon = u_west + pos.x * u_lonSpan;
   float mx = (lon + 180.0) / 360.0;
@@ -148,6 +160,7 @@ void main() {
 
 export const STORM_FRAG = `#version 300 es
 precision highp float;
+precision highp int;
 
 in vec2 v_uv;
 in float v_dbz;
@@ -156,9 +169,11 @@ in float v_alpha;
 in float v_seed;
 in float v_baseFrac;
 in float v_rain;
+in float v_frozen;
 out vec4 outColor;
 
 uniform float u_opacity;
+uniform int u_variant;
 
 // NWS-style banded reflectivity colors, matching the 2D drape's ramp.
 const vec3 DBZ[15] = vec3[15](
@@ -183,6 +198,21 @@ float vnoise(vec2 p) {
 }
 
 void main() {
+  if (u_variant == 1) {
+    // Rainfall curtain: vertically streaked veil, blue-grey for rain,
+    // whitening toward snow, density scaled by the forecast rate.
+    vec2 np = vec2(v_uv.x * 7.0 + v_seed * 53.0, v_uv.y * 0.9);
+    float streak = 0.55 * vnoise(np) + 0.45 * vnoise(np * vec2(2.3, 1.4) + 11.0);
+    float side = smoothstep(1.0, 0.45, abs(v_uv.x) + (streak - 0.5) * 0.25);
+    float topFade = smoothstep(1.02, 0.88, v_uv.y); // tucks under the cloud base
+    vec3 color = mix(vec3(0.50, 0.58, 0.70), vec3(0.85, 0.88, 0.95),
+                     clamp(v_frozen, 0.0, 1.0));
+    float intensity = 0.10 + 0.30 * v_rain;
+    float a = v_alpha * side * topFade * intensity * (0.35 + 0.65 * streak) * u_opacity;
+    outColor = vec4(color, 1.0) * a;
+    return;
+  }
+
   // Reflectivity weakens toward the echo top; color the curtain by the local
   // dBZ so a 55 dBZ core reads red low down and runs smoothly through the
   // ramp with height.

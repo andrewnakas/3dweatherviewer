@@ -151,6 +151,10 @@ async function main() {
         if (weather) {
           weather.storms = new StormLayer(map, meta, layer, weather.lighting,
             weather.wxShared, { grid: isMobile ? 64 : 96, enabled: false });
+          // rainfall curtains: how forecast precip reads at map scales,
+          // on by default and toggled together with the rain particles
+          weather.rain = new StormLayer(map, meta, layer, weather.lighting,
+            weather.wxShared, { grid: isMobile ? 64 : 96, variant: "rain" });
           weather.precip = new PrecipLayer(map, meta, layer, weather.lighting,
             weather.wxShared, { particleCount: isMobile ? 16384 : 65536 });
           weather.clouds = new CloudLayer(map, meta, layer, weather.lighting,
@@ -159,9 +163,11 @@ async function main() {
             weather.precip.enabled = false;
             weather.clouds.enabled = false;
             weather.storms.enabled = false;
+            weather.rain.enabled = false;
           }
           try {
             map.addLayer(weather.storms);
+            map.addLayer(weather.rain);
             map.addLayer(weather.precip);
             map.addLayer(weather.clouds);
           } catch (e) {

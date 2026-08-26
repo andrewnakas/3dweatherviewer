@@ -13,7 +13,11 @@ import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, t
 
 export class StormLayer {
   constructor(map, meta, windLayer, lighting, wxShared, opts = {}) {
-    this.id = "storm-cells";
+    // variant "dbz": the radar volume in NWS colors. variant "rain": soft
+    // streaked rainfall curtains from each raining cloud's base to the
+    // ground — the default way falling precip reads at map scales.
+    this.variant = opts.variant ?? "dbz";
+    this.id = this.variant === "rain" ? "rain-curtains" : "storm-cells";
     this.type = "custom";
     this.renderingMode = "3d";
     this.map = map;
@@ -99,6 +103,7 @@ export class StormLayer {
     gl.uniform2fv(U.u_wxTileScale, [1 / cols, 1 / rows]);
     gl.uniform2fv(U.u_wxClampMin, [0.5 / w.tile.width, 0.5 / w.tile.height]);
     gl.uniform2fv(U.u_wxClampMax, [1 - 0.5 / w.tile.width, 1 - 0.5 / w.tile.height]);
+    gl.uniform1i(U.u_variant, this.variant === "rain" ? 1 : 0);
     const off = (i) => [(i % cols) / cols, Math.floor(i / cols) / rows];
     gl.uniform2fv(U.u_radarOff, off(w.tiles.radar));
     gl.uniform2fv(U.u_cloudOff, off(w.tiles.cloud));

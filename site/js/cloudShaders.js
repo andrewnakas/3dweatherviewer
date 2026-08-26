@@ -255,7 +255,7 @@ void main() {
   vec3 rainCol = (u_ambient * 0.75 + diffuse * 0.15 * sunUp) * u_sunColor
                * vec3(0.55, 0.58, 0.65) * (1.0 - 0.22 * rf) * mix(0.8, 1.1, s);
   v_color = clamp(mix(col, rainCol, rf * 0.8), 0.0, 1.4);
-  v_alpha = 0.28 * (1.0 + 0.8 * rf) * (1.0 - 0.3 * highDeck) * fade * edge;
+  v_alpha = 0.36 * (1.0 + 0.7 * rf) * (1.0 - 0.3 * highDeck) * fade * edge;
   if (v_alpha < 0.004) collapse();
 }`;
 
