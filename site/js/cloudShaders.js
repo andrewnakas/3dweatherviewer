@@ -152,7 +152,12 @@ void main() {
     float coldTop = smoothstep(245.0, 228.0, irBT);
     rf = max(max(smoothstep(18.0, 40.0, dbz), smoothstep(0.2, 4.0, rate)),
              coldTop * 0.7);
-    if (satTopAgl > 500.0) top = max(top, terr + satTopAgl);
+    // Lift the deck to the satellite top only for deep/precipitating cloud —
+    // lifting everywhere stretched every deck vertically and left each level
+    // sparse. Capped so one puff column never spans more than ~9 km.
+    if (satTopAgl > 500.0 && (rf > 0.15 || coldTop > 0.3)) {
+      top = max(top, min(terr + satTopAgl, base + 9000.0));
+    }
   }
   v_rf = rf;
 
@@ -166,12 +171,14 @@ void main() {
   float wHigh = smoothstep(5000.0, 7000.0, h);
   float wMid = clamp(1.0 - wLow - wHigh, 0.0, 1.0);
   float band = lmh.r * wLow + lmh.g * wMid + lmh.b * wHigh;
-  float coverEff = max(band, cover * 0.55);
+  // a precipitating column is cloudy through its whole depth, whatever the
+  // per-band cover says
+  float coverEff = max(max(band, cover * 0.55), rf * 0.85);
 
   // condensate makes the honest 3D structure; keep a floor so shallow
   // stratus below the lowest condensate level still shows
   float qf = clamp(qcAt(pos, h) / 3.5e-4, 0.0, 1.0);
-  float p = coverEff * (0.35 + 0.65 * qf) * (1.0 + 0.8 * rf) * u_density;
+  float p = coverEff * (0.35 + 0.65 * max(qf, rf)) * (1.0 + 1.2 * rf) * u_density;
   float roll = hash12(jitterKey + 11.3);
   if (roll > p) { collapse(); return; }
   // soft edge: puffs that barely made the cut are wispier
@@ -242,11 +249,12 @@ void main() {
   float vshade = mix(0.72, 1.05, s);  // darker toward the deck's base
   vec3 lit = (u_ambient * 0.55 + diffuse * 0.6 * sunUp) * u_sunColor;
   vec3 col = lit * vshade * vec3(0.98, 0.99, 1.0);
-  // rain clouds: dark slate, barely sun-lit, deepening with rain intensity
-  vec3 rainCol = (u_ambient * 0.5 + diffuse * 0.12 * sunUp) * u_sunColor
-               * vec3(0.42, 0.45, 0.52) * (1.0 - 0.3 * rf) * mix(0.75, 1.1, s);
-  v_color = clamp(mix(col, rainCol, rf * 0.85), 0.0, 1.4);
-  v_alpha = 0.28 * (1.0 + 0.5 * rf) * (1.0 - 0.3 * highDeck) * fade * edge;
+  // rain clouds: heavy grey, mostly ambient-lit, deepening with intensity —
+  // but never so dark they vanish against the dusk basemap
+  vec3 rainCol = (u_ambient * 0.75 + diffuse * 0.15 * sunUp) * u_sunColor
+               * vec3(0.55, 0.58, 0.65) * (1.0 - 0.22 * rf) * mix(0.8, 1.1, s);
+  v_color = clamp(mix(col, rainCol, rf * 0.8), 0.0, 1.4);
+  v_alpha = 0.28 * (1.0 + 0.8 * rf) * (1.0 - 0.3 * highDeck) * fade * edge;
   if (v_alpha < 0.004) collapse();
 }`;
 
