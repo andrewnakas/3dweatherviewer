@@ -98,9 +98,8 @@ void main() {
   // floats at its real height instead of standing on the terrain.
   vec2 cuv = u_cloudOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
   float baseByte = mix(texture(u_wxA, cuv), texture(u_wxB, cuv), u_wxMix).g;
-  float baseAgl = max(baseByte * 255.0 - 1.0, 0.0) / 254.0 * u_baseMax - terr;
-  v_baseFrac = baseByte * 255.0 < 0.5 ? 0.0
-    : clamp(baseAgl / topAgl, 0.0, 0.85);
+  float baseAgl = baseByte * u_baseMax - terr; // infilled, plain linear
+  v_baseFrac = clamp(baseAgl / topAgl, 0.0, 0.85);
   vec2 puv = u_precipOff + clamp(pos, u_wxClampMin, u_wxClampMax) * u_wxTileScale;
   float rateN = mix(texture(u_wxA, puv), texture(u_wxB, puv), u_wxMix).r;
   float rate = rateN * rateN * u_rateMax; // mm/h

@@ -7,10 +7,31 @@ RAM) is needed. See config.py for the tile/channel map and NaN semantics.
 """
 
 import numpy as np
+from scipy import ndimage
 
 from config import TILE_H, TILE_W, WX_CONDENSATE_LEVELS, WX_ENC, WX_TILES
 from encode import encode_wx_tile, new_wx_atlas, quantize, wx_tile_slice
 from reproject import regrid
+
+
+def infill_nearest(field):
+    """Replace NaN cells with the value of the nearest finite cell.
+
+    Height fields the shaders sample with bilinear filtering (cloud base/top,
+    satellite top) cannot carry a byte-0 "absent" sentinel — filtering across
+    a cloudy/clear edge drags the decoded height toward zero. Absence is
+    carried by the cover/reflectivity channels instead, and the heights are
+    made smooth everywhere by nearest-valid infill.
+    """
+    mask = ~np.isfinite(field)
+    if not mask.any():
+        return field
+    if mask.all():
+        return np.zeros_like(field)
+    idx = ndimage.distance_transform_edt(
+        mask, return_distances=False, return_indices=True
+    )
+    return field[tuple(idx)]
 
 # Surface-group variables read per lead (beyond pressure_surface, which the
 # wind mask already reads and passes in).
@@ -83,12 +104,12 @@ def build_wx_frame(sfc_t, prs_t, index_map, psfc):
         domain,
     )
 
-    # --- cloud: total cover, base, top (base/top NaN -> byte 0 sentinel) -----
+    # --- cloud: total cover, base, top (heights infilled, see infill_nearest)
     encode_wx_tile(
         atlas, WX_TILES["cloud"],
         quantize(rg("total_cloud_cover_atmosphere"), WX_ENC["cloudCover"]),
-        quantize(rg("geopotential_height_cloud_base"), WX_ENC["cloudBase"]),
-        quantize(rg("geopotential_height_cloud_top"), WX_ENC["cloudTop"]),
+        quantize(infill_nearest(rg("geopotential_height_cloud_base")), WX_ENC["cloudBase"]),
+        quantize(infill_nearest(rg("geopotential_height_cloud_top")), WX_ENC["cloudTop"]),
         domain,
     )
 
@@ -130,7 +151,7 @@ def build_wx_frame(sfc_t, prs_t, index_map, psfc):
     encode_wx_tile(
         atlas, WX_TILES["satellite"],
         quantize(bt_ir, WX_ENC["irBT"]),
-        quantize(sat_top, WX_ENC["satTop"]),
+        quantize(infill_nearest(sat_top), WX_ENC["satTop"]),
         quantize(bt_wv, WX_ENC["wvBT"]),
         domain,
     )

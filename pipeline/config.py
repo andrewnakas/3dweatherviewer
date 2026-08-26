@@ -104,8 +104,14 @@ WX_ENC = {
     "echoTop":      {"kind": "linear", "min": 0, "max": 20000, "zeroIsNone": True},  # m
     "vil":          {"kind": "sqrt", "max": 80.0},           # kg/m^2
     "cloudCover":   {"kind": "linear", "min": 0, "max": 100},  # %
-    "cloudBase":    {"kind": "linear", "min": 0, "max": 16000, "zeroIsNone": True},  # m ASL
-    "cloudTop":     {"kind": "linear", "min": 0, "max": 16000, "zeroIsNone": True},  # m ASL
+    # Height fields sampled with BILINEAR filtering in the shaders must NOT
+    # use the byte-0 absence sentinel: filtering across a cloudy/clear edge
+    # dragged decoded bases toward zero and dropped whole cloud fields onto
+    # the terrain. Cloudless cells are instead infilled with the nearest
+    # valid height (weather.infill_nearest) — cloud EXISTENCE is gated by the
+    # cover channel, so the height only needs to be smooth and plausible.
+    "cloudBase":    {"kind": "linear", "min": 0, "max": 16000},  # m ASL
+    "cloudTop":     {"kind": "linear", "min": 0, "max": 16000},  # m ASL
     "t2m":          {"kind": "linear", "min": -60, "max": 50},   # degC
     "td2m":         {"kind": "linear", "min": -60, "max": 50},   # degC
     "dswrf":        {"kind": "linear", "min": 0, "max": 1250},   # W/m^2
@@ -116,7 +122,7 @@ WX_ENC = {
     "qp":           {"kind": "sqrt", "max": 5.0e-3},             # kg/kg rain+snow+graupel
     "rh":           {"kind": "linear", "min": 0, "max": 100},    # %
     "irBT":         {"kind": "linear", "min": 180, "max": 330},  # K, IR window
-    "satTop":       {"kind": "linear", "min": 0, "max": 16000, "zeroIsNone": True},  # m AGL
+    "satTop":       {"kind": "linear", "min": 0, "max": 16000},  # m AGL, infilled
     "wvBT":         {"kind": "linear", "min": 180, "max": 280},  # K, water vapor
 }
 

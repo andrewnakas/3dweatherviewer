@@ -84,9 +84,10 @@ vec4 wxTile(vec2 off, vec2 pos) {
   return mix(texture(u_wxA, uv), texture(u_wxB, uv), u_wxMix);
 }
 
-// byte-0-sentinel linear decode of a normalized channel
+// plain linear decode: height channels are infilled by the pipeline (no
+// absence sentinel), so bilinear filtering interpolates between real heights
 float decodeZ(float g, float vmax) {
-  return max(g * 255.0 - 1.0, 0.0) / 254.0 * vmax;
+  return g * vmax;
 }
 
 // cloud condensate (kg/kg) interpolated from the 12-level column at h m ASL
@@ -144,7 +145,7 @@ void main() {
   if (u_hasSat > 0.5) {
     vec4 sat = wxTile(u_satOff, pos);
     float irBT = mix(u_btMin, u_btMax, sat.r);
-    float satTopAgl = max(sat.g * 255.0 - 1.0, 0.0) / 254.0 * u_satTopMax;
+    float satTopAgl = decodeZ(sat.g, u_satTopMax);
     vec4 rad = wxTile(u_radarOff, pos);
     float dbz = -10.0 + max(rad.r * 255.0 - 1.0, 0.0) / 254.0 * 85.0;
     float rateN = wxTile(u_precipOff, pos).r;

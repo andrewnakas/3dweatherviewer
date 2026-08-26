@@ -145,7 +145,8 @@ export class PointCast {
     else if (c.refl != null && c.refl > 5) rows.push(["Radar", `${c.refl.toFixed(0)} dBZ echo`]);
     const lmh = c.cloudLMH.map((v) => `${v?.toFixed(0) ?? 0}`).join("/");
     let cloudTxt = `${c.cloud?.toFixed(0) ?? 0}% (L/M/H ${lmh}%)`;
-    if (c.cloudBase != null) {
+    // base heights are infilled everywhere, so only quote one under real cloud
+    if (c.cloudBase != null && (c.cloud ?? 0) > 5) {
       const agl = Math.max(0, c.cloudBase - ground);
       cloudTxt += ` · base ${agl >= 1000 ? (agl / 1000).toFixed(1) + " km" : Math.round(agl) + " m"} AGL`;
     }
