@@ -88,8 +88,10 @@ WX_TILES = {
     "surface": 4,      # R t2m, G td2m, B DSWRF
     "surface2": 5,     # R gust, G visibility, B snow depth
     "condensate0": 6,  # 12 tiles: R cloud qc+qi, G precip qr+qs+qg, B RH
+    "satellite": 18,   # R IR-window BT, G BT-derived cloud top AGL, B WV BT
 }
-assert WX_TILES["condensate0"] + len(WX_CONDENSATE_LEVELS) <= WX_ATLAS_COLS * WX_ATLAS_ROWS
+assert WX_TILES["condensate0"] + len(WX_CONDENSATE_LEVELS) <= WX_TILES["satellite"]
+assert WX_TILES["satellite"] < WX_ATLAS_COLS * WX_ATLAS_ROWS
 
 # Channel encodings, the single source of truth (mirrored into meta.json).
 # kind: linear (min..max), sqrt (sqrt(v/max), v clipped >= 0), log10
@@ -113,6 +115,9 @@ WX_ENC = {
     "qc":           {"kind": "sqrt", "max": 3.0e-3},             # kg/kg cloud+ice
     "qp":           {"kind": "sqrt", "max": 5.0e-3},             # kg/kg rain+snow+graupel
     "rh":           {"kind": "linear", "min": 0, "max": 100},    # %
+    "irBT":         {"kind": "linear", "min": 180, "max": 330},  # K, IR window
+    "satTop":       {"kind": "linear", "min": 0, "max": 16000, "zeroIsNone": True},  # m AGL
+    "wvBT":         {"kind": "linear", "min": 180, "max": 280},  # K, water vapor
 }
 
 LEAD_HOURS = list(range(49))  # 0..48

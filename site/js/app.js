@@ -130,6 +130,9 @@ async function main() {
         lighting: new Lighting(map, meta, wxCpu),
         radar: new RadarOverlay(map, meta, wxCpu),
       };
+      // Precipitating areas render as dark rain clouds by default; the dBZ
+      // imagery (drape + towers) is opt-in via the panel.
+      weather.radar.enabled = false;
     }
 
     const layer = new WindLayer(map, meta, {
@@ -146,7 +149,7 @@ async function main() {
         layer.setLevels(bl3dIndices(meta));
         if (weather) {
           weather.storms = new StormLayer(map, meta, layer, weather.lighting,
-            weather.wxShared, { grid: isMobile ? 64 : 96 });
+            weather.wxShared, { grid: isMobile ? 64 : 96, enabled: false });
           weather.precip = new PrecipLayer(map, meta, layer, weather.lighting,
             weather.wxShared, { particleCount: isMobile ? 16384 : 65536 });
           weather.clouds = new CloudLayer(map, meta, layer, weather.lighting,

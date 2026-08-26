@@ -34,6 +34,12 @@ SFC_VARS = [
     "wind_gust_surface",
     "visibility_surface",
     "snow_thickness_surface",
+    # Simulated GOES brightness temperatures: 113/123 = GOES-West/East water
+    # vapor channel, 114/124 = GOES-West/East IR window channel.
+    "brightness_temperature_channel_113",
+    "brightness_temperature_channel_114",
+    "brightness_temperature_channel_123",
+    "brightness_temperature_channel_124",
 ]
 
 
@@ -94,11 +100,38 @@ def build_wx_frame(sfc_t, prs_t, index_map, psfc):
         domain,
     )
 
+    t2m = rg("temperature_2m")  # degC; reused for the satellite cloud-top estimate
     encode_wx_tile(
         atlas, WX_TILES["surface"],
-        quantize(rg("temperature_2m"), WX_ENC["t2m"]),
+        quantize(t2m, WX_ENC["t2m"]),
         quantize(rg("dew_point_temperature_2m"), WX_ENC["td2m"]),
         quantize(rg("downward_short_wave_radiation_flux_surface"), WX_ENC["dswrf"]),
+        domain,
+    )
+
+    # --- satellite: simulated GOES IR/WV composite + BT-derived cloud top ----
+    # Coldest-view composite of the East/West satellites. Cloud-top height
+    # above ground from the IR window BT via a standard 6.5 K/km lapse against
+    # the 2 m temperature — crude next to a real retrieval, but plenty to
+    # place cloud tops for rendering. Warmer than (t2m - 4 K) counts as clear
+    # sky and takes the byte-0 sentinel.
+    bt_ir = np.minimum(
+        rg("brightness_temperature_channel_114"),
+        rg("brightness_temperature_channel_124"),
+    )
+    bt_wv = np.minimum(
+        rg("brightness_temperature_channel_113"),
+        rg("brightness_temperature_channel_123"),
+    )
+    with np.errstate(invalid="ignore"):
+        t2k = t2m + 273.15
+        top_agl = np.clip((t2k - bt_ir) / 0.0065, 0.0, 16000.0)
+        sat_top = np.where(bt_ir <= t2k - 4.0, top_agl, np.nan)
+    encode_wx_tile(
+        atlas, WX_TILES["satellite"],
+        quantize(bt_ir, WX_ENC["irBT"]),
+        quantize(sat_top, WX_ENC["satTop"]),
+        quantize(bt_wv, WX_ENC["wvBT"]),
         domain,
     )
 

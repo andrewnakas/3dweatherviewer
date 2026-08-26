@@ -233,6 +233,29 @@ export function initUI(map, layer, meta, weather = null) {
   setTime(0);
   drawLegend($("legend"));
 
+  // --- camera elevation readout ---
+  // Reads the true eye point from the transform (same source the occlusion
+  // raymarch uses) plus the shader's terrain under it, so the numbers match
+  // what is actually rendered.
+  const camOut = $("cam-readout");
+  const b = meta.bounds;
+  setInterval(() => {
+    try {
+      const cam = map.transform.getCameraPosition();
+      const alt = cam.altitude;
+      if (!Number.isFinite(alt)) return;
+      const nx = (cam.lngLat.lng - b.west) / (b.east - b.west);
+      const ny = (b.north - cam.lngLat.lat) / (b.north - b.south);
+      const ground = layer.sampleTerrain?.(nx, ny);
+      const ft = Math.round(alt * 3.28084).toLocaleString();
+      let txt = `camera ${Math.round(alt).toLocaleString()} m / ${ft} ft ASL`;
+      if (ground != null) {
+        txt += ` · ${Math.round(Math.max(0, alt - ground)).toLocaleString()} m above ground`;
+      }
+      camOut.textContent = txt;
+    } catch { /* readout is best-effort */ }
+  }, 250);
+
   // --- weather stack (radar / clouds / precip / sun) ---
   if (weather) {
     $("weather-controls").hidden = false;
@@ -248,7 +271,7 @@ export function initUI(map, layer, meta, weather = null) {
     tClouds.checked = weather.clouds?.enabled ?? false;
     tPrecip.checked = weather.precip?.enabled ?? false;
     tStorms.checked = weather.storms?.enabled ?? false;
-    tRadar.checked = true;
+    tRadar.checked = weather.radar.enabled !== false;
     tSun.checked = weather.lighting.enabled;
 
     tClouds.addEventListener("change", () => {

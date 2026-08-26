@@ -34,9 +34,10 @@ export class RadarOverlay {
     this.map = map;
     this.meta = meta;
     this.wx = wxAtlas; // shared CpuAtlas over the weather frames
-    // Modest default: the drape is map context now — the 3D storm-cell layer
-    // carries the volumetric read of the radar.
+    // Modest default: the drape is map context now — precipitating areas
+    // render as rain clouds in 3D, so the dBZ imagery is opt-in.
     this.opacity = 0.5;
+    this.enabled = true; // caller may flip before the first publish
     this.lastLead = null;
     this.added = false;
     this._pending = null;
@@ -142,6 +143,7 @@ export class RadarOverlay {
         id: "radar-layer",
         type: "raster",
         source: "radar",
+        layout: { visibility: this.enabled === false ? "none" : "visible" },
         paint: {
           "raster-opacity": this.opacity,
           "raster-fade-duration": 0,

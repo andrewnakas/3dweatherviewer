@@ -26,10 +26,10 @@
         <input type="checkbox" id="toggle-precip" checked> Precipitation
       </label>
       <label class="row">
-        <input type="checkbox" id="toggle-storms" checked> 3D storm cells (echo tops)
+        <input type="checkbox" id="toggle-storms"> Radar towers (dBZ volume)
       </label>
       <label class="row">
-        <input type="checkbox" id="toggle-radar" checked> Radar map (draped)
+        <input type="checkbox" id="toggle-radar"> Radar map (draped)
       </label>
       <label class="row">
         <input type="checkbox" id="toggle-sun" checked> Sun &amp; day/night lighting
@@ -112,6 +112,8 @@
     <canvas id="pointcast-canvas"></canvas>
     <div id="pointcast-tip"></div>
   </div>
+
+  <div id="cam-readout" title="Camera altitude"></div>
 
   <div id="timebar">
     <button id="play" title="Play/pause">▶</button>

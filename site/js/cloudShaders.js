@@ -48,11 +48,22 @@ uniform float u_qcMax;      // qc sqrt-encoding max (kg/kg)
 uniform vec2 u_qcOff[${QC_LEVELS}];
 uniform float u_qcHeight[${QC_LEVELS}];
 uniform int u_qcLen;
+// satellite + precip alignment (u_hasSat gates a data build without them)
+uniform float u_hasSat;
+uniform vec2 u_satOff;      // R IR BT, G BT-derived top AGL, B WV BT
+uniform vec2 u_radarOff;
+uniform vec2 u_precipOff;
+uniform float u_satTopMax;
+uniform float u_rateMax;
+uniform float u_btMin;
+uniform float u_btMax;
+uniform float u_time;
 
 out vec2 v_uv;
 out vec3 v_color;
 out float v_alpha;
 out float v_seed;
+out float v_rf;             // 0..1 "this is a precipitating rain cloud"
 
 const float PI = 3.141592653589793;
 
@@ -123,6 +134,28 @@ void main() {
   float top = decodeZ(cl.b, u_hMax);
   if (cover < 0.03 || top <= base + 60.0) { collapse(); return; }
 
+  float terr = terrainHeight(pos);
+
+  // Precipitation alignment: a cloud over a radar echo, model surface rain,
+  // or a satellite deep-cold top is a RAIN CLOUD (v_rf drives dark shading,
+  // density and size). The satellite BT-derived top also lifts the deck
+  // where the IR says the cloud reaches higher than the model's top field.
+  float rf = 0.0;
+  if (u_hasSat > 0.5) {
+    vec4 sat = wxTile(u_satOff, pos);
+    float irBT = mix(u_btMin, u_btMax, sat.r);
+    float satTopAgl = max(sat.g * 255.0 - 1.0, 0.0) / 254.0 * u_satTopMax;
+    vec4 rad = wxTile(u_radarOff, pos);
+    float dbz = -10.0 + max(rad.r * 255.0 - 1.0, 0.0) / 254.0 * 85.0;
+    float rateN = wxTile(u_precipOff, pos).r;
+    float rate = rateN * rateN * u_rateMax;
+    float coldTop = smoothstep(245.0, 228.0, irBT);
+    rf = max(max(smoothstep(18.0, 40.0, dbz), smoothstep(0.2, 4.0, rate)),
+             coldTop * 0.7);
+    if (satTopAgl > 500.0) top = max(top, terr + satTopAgl);
+  }
+  v_rf = rf;
+
   // vertical slot inside [base, top]
   float s = (float(layer) + hash12(jitterKey + 3.3)) / float(u_layers);
   float h = mix(base, top, s);
@@ -138,14 +171,23 @@ void main() {
   // condensate makes the honest 3D structure; keep a floor so shallow
   // stratus below the lowest condensate level still shows
   float qf = clamp(qcAt(pos, h) / 3.5e-4, 0.0, 1.0);
-  float p = coverEff * (0.35 + 0.65 * qf) * u_density;
+  float p = coverEff * (0.35 + 0.65 * qf) * (1.0 + 0.8 * rf) * u_density;
   float roll = hash12(jitterKey + 11.3);
   if (roll > p) { collapse(); return; }
   // soft edge: puffs that barely made the cut are wispier
   float edge = smoothstep(0.0, 0.25 * p, p - roll);
 
-  float terr = terrainHeight(pos);
   float zAgl = max(h - terr, 120.0);
+
+  // Cloud type shaping from height, thickness and precip state: high decks
+  // (cirrus family) and thin sheets (stratus) flatten and widen; rain clouds
+  // stay towering and swell slightly. A slow breathing wobble keeps a rain
+  // deck visibly alive during playback.
+  float baseAgl = max(base - terr, 0.0);
+  float depthM = max(top - base, 100.0);
+  float highDeck = smoothstep(5000.0, 7000.0, baseAgl) * (1.0 - rf);
+  float thinDeck = smoothstep(1500.0, 500.0, depthM) * (1.0 - rf);
+  float flatten = clamp(0.55 * highDeck + 0.45 * thinDeck, 0.0, 0.6);
 
   // puff radius: scaled to the depth of the deck and the lattice spacing so
   // zoomed-out views close into sheets instead of leaving gaps
@@ -155,14 +197,17 @@ void main() {
   float depth = clamp((top - base) / 3000.0, 0.4, 1.6);
   float radius = mix(500.0, 1500.0, hash12(jitterKey + 23.1)) * depth;
   radius = clamp(max(radius, cellM * 0.42), 250.0, 26000.0);
+  radius *= (1.0 + 0.5 * highDeck + 0.25 * rf)
+          * (1.0 + 0.05 * sin(u_time * 0.6 + v_seed * 37.0) * (0.3 + rf));
 
   float lon = u_west + pos.x * u_lonSpan;
   float mx = (lon + 180.0) / 360.0;
   float sm = clamp(sin(radians(latP)), -0.9999, 0.9999);
   float my = 0.5 - 0.25 * log((1.0 + sm) / (1.0 - sm)) / PI;
 
-  // billboard in ENU, then ENU -> mercator (x=east, y=-north, z=up)
-  vec3 off = (u_camRight * c.x + u_camUp * c.y) * radius;
+  // billboard in ENU, then ENU -> mercator (x=east, y=-north, z=up);
+  // flattened puffs squash their screen-vertical axis (cirrus/stratus sheets)
+  vec3 off = (u_camRight * c.x + u_camUp * c.y * (1.0 - flatten)) * radius;
   vec3 world = vec3(mx + off.x * u_m2merc,
                     my - off.y * u_m2merc,
                     zAgl * u_altMerc + off.z * u_altMerc);
@@ -196,8 +241,12 @@ void main() {
   float sunUp = clamp(u_sunDir.z, 0.0, 1.0);
   float vshade = mix(0.72, 1.05, s);  // darker toward the deck's base
   vec3 lit = (u_ambient * 0.55 + diffuse * 0.6 * sunUp) * u_sunColor;
-  v_color = clamp(lit * vshade, 0.0, 1.4) * vec3(0.98, 0.99, 1.0);
-  v_alpha = 0.28 * fade * edge;
+  vec3 col = lit * vshade * vec3(0.98, 0.99, 1.0);
+  // rain clouds: dark slate, barely sun-lit, deepening with rain intensity
+  vec3 rainCol = (u_ambient * 0.5 + diffuse * 0.12 * sunUp) * u_sunColor
+               * vec3(0.42, 0.45, 0.52) * (1.0 - 0.3 * rf) * mix(0.75, 1.1, s);
+  v_color = clamp(mix(col, rainCol, rf * 0.85), 0.0, 1.4);
+  v_alpha = 0.28 * (1.0 + 0.5 * rf) * (1.0 - 0.3 * highDeck) * fade * edge;
   if (v_alpha < 0.004) collapse();
 }`;
 
@@ -208,6 +257,7 @@ in vec2 v_uv;
 in vec3 v_color;
 in float v_alpha;
 in float v_seed;
+in float v_rf;
 out vec4 outColor;
 
 uniform float u_opacity;
@@ -233,5 +283,7 @@ void main() {
   float noise = 0.65 * vnoise(np) + 0.35 * vnoise(np * 2.7 + 11.0);
   float body = smoothstep(1.0, 0.25, d + (noise - 0.5) * 0.55);
   float a = v_alpha * body * u_opacity;
-  outColor = vec4(v_color, 1.0) * a;
+  // rain clouds get moodier cores
+  vec3 color = v_color * (1.0 - 0.18 * v_rf * (1.0 - d));
+  outColor = vec4(color, 1.0) * a;
 }`;

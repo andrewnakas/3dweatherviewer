@@ -119,20 +119,30 @@ export class CloudLayer {
 
     // weather atlas + tiles
     const { cols, rows } = w.atlas;
+    const off = (i) => [(i % cols) / cols, Math.floor(i / cols) / rows];
     gl.uniform1i(U.u_wxA, 8);
     gl.uniform1i(U.u_wxB, 9);
     gl.uniform1f(U.u_wxMix, pair.mix);
     gl.uniform2fv(U.u_wxTileScale, [1 / cols, 1 / rows]);
     gl.uniform2fv(U.u_wxClampMin, [0.5 / w.tile.width, 0.5 / w.tile.height]);
     gl.uniform2fv(U.u_wxClampMax, [1 - 0.5 / w.tile.width, 1 - 0.5 / w.tile.height]);
-    gl.uniform2fv(U.u_cloudOff, [
-      (w.tiles.cloud % cols) / cols, Math.floor(w.tiles.cloud / cols) / rows,
-    ]);
-    gl.uniform2fv(U.u_layersOff, [
-      (w.tiles.cloudLayers % cols) / cols, Math.floor(w.tiles.cloudLayers / cols) / rows,
-    ]);
+    gl.uniform2fv(U.u_cloudOff, off(w.tiles.cloud));
+    gl.uniform2fv(U.u_layersOff, off(w.tiles.cloudLayers));
     gl.uniform1f(U.u_hMax, w.enc.cloudBase.max);
     gl.uniform1f(U.u_qcMax, w.enc.qc.max);
+    // satellite + precip alignment (absent on an older data build)
+    const hasSat = w.tiles.satellite != null && w.enc.irBT && w.enc.satTop;
+    gl.uniform1f(U.u_hasSat, hasSat ? 1.0 : 0.0);
+    if (hasSat) {
+      gl.uniform2fv(U.u_satOff, off(w.tiles.satellite));
+      gl.uniform2fv(U.u_radarOff, off(w.tiles.radar));
+      gl.uniform2fv(U.u_precipOff, off(w.tiles.precip));
+      gl.uniform1f(U.u_satTopMax, w.enc.satTop.max);
+      gl.uniform1f(U.u_rateMax, w.enc.precipRate.max);
+      gl.uniform1f(U.u_btMin, w.enc.irBT.min);
+      gl.uniform1f(U.u_btMax, w.enc.irBT.max);
+    }
+    gl.uniform1f(U.u_time, (performance.now() / 1000) % 1000);
     gl.uniform2fv(U.u_qcOff, this.qcOff);
     gl.uniform1fv(U.u_qcHeight, this.qcHeight);
     gl.uniform1i(U.u_qcLen, this.qcLen);
