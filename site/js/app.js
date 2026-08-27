@@ -162,7 +162,9 @@ async function main() {
             weather.wxShared, { grid: isMobile ? 44 : 72 });
           // HRRR-Smoke plumes: same billboard machinery, SMOKE variant
           weather.smoke = new CloudLayer(map, meta, layer, weather.lighting,
-            weather.wxShared, { grid: isMobile ? 44 : 72, variant: "smoke", layers: 4 });
+            weather.wxShared, { grid: isMobile ? 40 : 64, variant: "smoke",
+              // slice count IS the volume's vertical resolution
+              layers: isMobile ? 10 : 16 });
           weather.fires = new FireLayer(map, meta, layer);
           if (lowmem) {
             weather.precip.enabled = false;
@@ -181,7 +183,9 @@ async function main() {
           } catch (e) {
             console.warn("weather layers unavailable:", e.message);
           }
-          weather.radar.setTime(0); // first paint before any slider move
+          // first paint before any slider move; initUI immediately re-times
+          // this to "now", but the radar image must exist before then
+          weather.radar.setTime(0);
           // FIRMS hotspots: a snapshot next to the forecast, not a live feed
           if (meta.fires?.file) {
             fetch(`data/${meta.fires.file}?v=${encodeURIComponent(meta.init_time)}`)

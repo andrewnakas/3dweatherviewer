@@ -9,7 +9,7 @@ RAM) is needed. See config.py for the tile/channel map and NaN semantics.
 import numpy as np
 from scipy import ndimage
 
-from config import TILE_H, TILE_W, WX_CONDENSATE_LEVELS, WX_ENC, WX_TILES
+from config import TILE_H, TILE_W, WX_CONDENSATE_LEVELS, WX_ENC, WX_SMOKE_LEVELS, WX_TILES
 from encode import encode_wx_tile, new_wx_atlas, quantize, wx_tile_slice
 from reproject import regrid
 
@@ -68,11 +68,12 @@ SFC_VARS = [
 ]
 
 
-def build_wx_frame(sfc_t, prs_t, index_map, psfc):
+def build_wx_frame(sfc_t, prs_t, mdl_t, index_map, psfc):
     """Weather atlas for one lead hour.
 
-    sfc_t/prs_t: the surface / pressure-level datasets already selected to
-    (init_time, lead); index_map: from reproject.build_index_map;
+    sfc_t/prs_t/mdl_t: the surface / pressure-level / model-level datasets
+    already selected to (init_time, lead);
+    index_map: from reproject.build_index_map;
     psfc: surface pressure (Pa) already regridded for the wind mask.
     Returns (WX_ATLAS_H, WX_ATLAS_W, 4) uint8.
     """
@@ -176,6 +177,17 @@ def build_wx_frame(sfc_t, prs_t, index_map, psfc):
         quantize(rg("aerosol_optical_thickness_atmosphere"), WX_ENC["aod"]),
         domain,
     )
+
+    # --- 3D smoke: mass density on the native terrain-following levels -------
+    # This is the volumetric field the smoke rendering marches through, rather
+    # than a column total smeared upward: each tile is one model level, and
+    # because the levels follow the terrain their heights are carried as mean
+    # AGL (see WX_SMOKE_LEVELS).
+    smoke3d = mdl_t["mass_density"].sel(model_level=WX_SMOKE_LEVELS).values
+    for i, _lvl in enumerate(WX_SMOKE_LEVELS):
+        layer = quantize(regrid(smoke3d[:, :, i], index_map), WX_ENC["smoke3d"])
+        encode_wx_tile(atlas, WX_TILES["smoke3d0"] + i, layer, layer, layer, domain)
+    del smoke3d
 
     # --- condensate column: 12 pressure levels of qc / qp / RH ----------------
     # Read one variable at a time over just the subset levels (each slab is

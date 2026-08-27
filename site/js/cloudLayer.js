@@ -6,7 +6,7 @@
 // with the precip layer; the two never render in the same draw call so the
 // same units are safe).
 
-import { CLOUD_VERT, CLOUD_FRAG, QC_LEVELS } from "./cloudShaders.js";
+import { CLOUD_VERT, CLOUD_FRAG, QC_LEVELS, SMOKE_LEVELS } from "./cloudShaders.js";
 import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice } from "./glutil.js";
 
 export class CloudLayer {
@@ -53,6 +53,18 @@ export class CloudLayer {
       this.qcOff[k * 2] = (c.index % cols) / cols;
       this.qcOff[k * 2 + 1] = Math.floor(c.index / cols) / rows;
       this.qcHeight[k] = c.heightMeters;
+    }
+
+    // 3D smoke levels (native model levels, heights above ground)
+    const sm = w.smokeLevels ?? [];
+    this.sm3Len = Math.min(sm.length, SMOKE_LEVELS);
+    this.sm3Off = new Float32Array(SMOKE_LEVELS * 2);
+    this.sm3Agl = new Float32Array(SMOKE_LEVELS);
+    for (let k = 0; k < SMOKE_LEVELS && this.sm3Len > 0; k++) {
+      const e = sm[Math.min(k, this.sm3Len - 1)];
+      this.sm3Off[k * 2] = (e.index % cols) / cols;
+      this.sm3Off[k * 2 + 1] = Math.floor(e.index / cols) / rows;
+      this.sm3Agl[k] = e.aglMeters;
     }
   }
 
@@ -154,6 +166,12 @@ export class CloudLayer {
       gl.uniform2fv(U.u_smokeOff, off(w.tiles.smoke));
       gl.uniform1f(U.u_smokeColMax, w.enc.smokeCol.max);
       gl.uniform1f(U.u_smokeSfcMax, w.enc.smokeSfc.max);
+    }
+    if (this.sm3Len) {
+      gl.uniform2fv(U.u_sm3Off, this.sm3Off);
+      gl.uniform1fv(U.u_sm3Agl, this.sm3Agl);
+      gl.uniform1i(U.u_sm3Len, this.sm3Len);
+      gl.uniform1f(U.u_sm3Max, w.enc.smoke3d?.max ?? 2.0e-6);
     }
     gl.uniform2fv(U.u_qcOff, this.qcOff);
     gl.uniform1fv(U.u_qcHeight, this.qcHeight);

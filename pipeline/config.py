@@ -4,7 +4,11 @@ The contract between pipeline and frontend is meta.json + the atlas PNG
 layout defined here. Change tile size / level list here only.
 """
 
-DATASET_ID = "noaa-hrrr-forecast-48-hour-virtual"
+# The HOURLY-init HRRR (18 h forecasts). HRRR itself runs every hour; only
+# the 00/06/12/18Z cycles run out to 48 h. Taking the hourly dataset means
+# the freshest init is at most ~1-2 h old instead of up to 6 h, so the page
+# opens on weather — and a sun position — that matches the real sky now.
+DATASET_ID = "noaa-hrrr-forecast-18-hour-virtual"
 
 # HRRR pressure levels in the dataset, ordered surface -> top (hPa).
 PRESSURE_LEVELS = [
@@ -71,9 +75,9 @@ ROTCON = 0.6225146  # sin(38.5 deg): grid->earth wind rotation constant
 # (no cloud, no echo) reserve byte 0 as the "none" sentinel and quantize real
 # values to 1..255 — regrid()'s NaN-means-outside-domain convention never
 # collides with NaN-means-no-cloud.
-WX_ATLAS_COLS, WX_ATLAS_ROWS = 7, 3
+WX_ATLAS_COLS, WX_ATLAS_ROWS = 7, 5
 WX_ATLAS_W = WX_ATLAS_COLS * TILE_W   # 3150
-WX_ATLAS_H = WX_ATLAS_ROWS * TILE_H   # 795
+WX_ATLAS_H = WX_ATLAS_ROWS * TILE_H   # 1325
 assert WX_ATLAS_W <= 4096 and WX_ATLAS_H <= 4096, "weather atlas exceeds safe texture size"
 
 # Pressure levels carried in the condensate tiles (subset: enough vertical
@@ -90,9 +94,16 @@ WX_TILES = {
     "condensate0": 6,  # 12 tiles: R cloud qc+qi, G precip qr+qs+qg, B RH
     "satellite": 18,   # R IR-window BT, G BT-derived cloud top AGL, B WV BT
     "smoke": 19,       # R column smoke, G near-surface smoke, B aerosol depth
+    "smoke3d0": 20,    # 12 tiles: R smoke mass density on native model levels
 }
+
+# Native (terrain-following) model levels carrying the 3D smoke field. HRRR's
+# hybrid levels hug the ground, so their height is stored as a mean height
+# ABOVE GROUND — which is what makes a plume sit correctly over a valley and
+# over a ridge alike. Chosen to resolve the boundary layer densely and thin
+# out aloft, where smoke concentration falls away (level 22 ~ 7.5 km AGL).
+WX_SMOKE_LEVELS = [1, 2, 3, 4, 5, 7, 9, 11, 13, 15, 18, 22]
 assert WX_TILES["condensate0"] + len(WX_CONDENSATE_LEVELS) <= WX_TILES["satellite"]
-assert max(WX_TILES.values()) < WX_ATLAS_COLS * WX_ATLAS_ROWS
 
 # Channel encodings, the single source of truth (mirrored into meta.json).
 # kind: linear (min..max), sqrt (sqrt(v/max), v clipped >= 0), log10
@@ -131,9 +142,13 @@ WX_ENC = {
     "smokeCol":     {"kind": "sqrt", "max": 5.0e-4},   # kg/m2 column smoke
     "smokeSfc":     {"kind": "sqrt", "max": 2.0e-6},   # kg/m3 near-surface
     "aod":          {"kind": "linear", "min": 0, "max": 3},  # aerosol optical depth
+    # 3D smoke: observed max 1.85e-6 kg/m3 near the surface over active fires.
+    "smoke3d":      {"kind": "sqrt", "max": 2.0e-6},   # kg/m3 per model level
 }
 
-LEAD_HOURS = list(range(49))  # 0..48
+assert WX_TILES["smoke3d0"] + len(WX_SMOKE_LEVELS) <= WX_ATLAS_COLS * WX_ATLAS_ROWS
+
+LEAD_HOURS = list(range(19))  # 0..18 (hourly HRRR forecast length)
 
 # Quantization: per-level min/max over all frames, padded by this fraction.
 SCALE_PAD = 0.05

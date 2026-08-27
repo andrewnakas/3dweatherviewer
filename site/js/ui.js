@@ -194,12 +194,24 @@ export function initUI(map, layer, meta, weather = null) {
   let lastTs = 0;
   const HOURS_PER_SEC = 0.7;
 
+  // Open on NOW, not on the init hour. The build is up to an hour or two old
+  // by the time anyone loads the page, so starting at lead 0 shows weather —
+  // and a sun position — that is already stale. Snapping to the lead nearest
+  // the real clock means the sky on screen matches the sky outside.
+  const nowLead = () => {
+    const h = (Date.now() - init.getTime()) / 3600e3;
+    return Math.max(0, Math.min(maxLead, Math.round(h * 4) / 4));
+  };
+
   function setTime(t, fromSlider = false) {
     layer.time = Math.max(0, Math.min(maxLead, t));
     if (!fromSlider) slider.value = String(Math.round(layer.time));
     const valid = new Date(init.getTime() + layer.time * 3600e3);
     const opts = { month: "short", day: "numeric", hour: "numeric" };
-    label.textContent = `+${Math.round(layer.time)} h · ${valid.toLocaleString(undefined, opts)}`;
+    const rel = layer.time - nowLead();
+    const when = Math.abs(rel) < 0.35 ? "now"
+      : rel < 0 ? `${Math.round(-rel)} h ago` : `+${Math.round(rel)} h`;
+    label.textContent = `${when} · ${valid.toLocaleString(undefined, opts)}`;
     window.dispatchEvent(new CustomEvent("windtime", { detail: layer.time }));
   }
 
@@ -230,7 +242,7 @@ export function initUI(map, layer, meta, weather = null) {
     }
   });
 
-  setTime(0);
+  setTime(nowLead());
   drawLegend($("legend"));
 
   // --- camera elevation readout ---
@@ -320,6 +332,9 @@ export function initUI(map, layer, meta, weather = null) {
     const cden = $("cloud-density");
     cden.addEventListener("input", () => {
       if (weather.clouds) weather.clouds.density = Number(cden.value);
+      // the same control thickens smoke, so a thin regional haze can be
+      // pushed up to something you can actually see
+      if (weather.smoke) weather.smoke.density = Number(cden.value);
       $("cloud-den-val").textContent = `${Number(cden.value).toFixed(1)}×`;
       map.triggerRepaint();
     });

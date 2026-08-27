@@ -34,6 +34,7 @@ from config import (
     WX_ATLAS_W,
     WX_CONDENSATE_LEVELS,
     WX_ENC,
+    WX_SMOKE_LEVELS,
     WX_TILES,
 )
 
@@ -112,8 +113,12 @@ def new_wx_atlas():
     return np.zeros((WX_ATLAS_H, WX_ATLAS_W, 4), dtype=np.uint8)
 
 
-def wx_meta_block(heights_by_plev):
-    """The additive meta.json `weather` block. heights_by_plev: hPa -> m ASL."""
+def wx_meta_block(heights_by_plev, smoke_agl=None):
+    """The additive meta.json `weather` block.
+
+    heights_by_plev: hPa -> m ASL for the condensate levels.
+    smoke_agl: mean height above ground (m) of each 3D smoke model level.
+    """
     return {
         "atlas": {"cols": WX_ATLAS_COLS, "rows": WX_ATLAS_ROWS},
         "tile": {"width": TILE_W, "height": TILE_H},
@@ -127,6 +132,11 @@ def wx_meta_block(heights_by_plev):
             }
             for i, p in enumerate(WX_CONDENSATE_LEVELS)
         ],
+        **({"smokeLevels": [
+            {"index": WX_TILES["smoke3d0"] + i, "level": lvl,
+             "aglMeters": round(float(smoke_agl[i]), 1)}
+            for i, lvl in enumerate(WX_SMOKE_LEVELS)
+        ]} if smoke_agl else {}),
         "frames": [],  # filled by write_output
     }
 

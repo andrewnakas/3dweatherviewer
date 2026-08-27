@@ -17,7 +17,7 @@ import numpy as np
 
 from config import (
     LEAD_HOURS, LEVELS, PRESSURE_LEVELS, TILE_H, TILE_W,
-    WX_CONDENSATE_LEVELS, height_meters,
+    WX_CONDENSATE_LEVELS, WX_SMOKE_LEVELS, height_meters,
 )
 from encode import compute_scales, write_output, wx_meta_block
 from hrrr_source import open_datasets, pick_init
@@ -36,7 +36,7 @@ SFC_VARS = [("wind_u_10m", "wind_v_10m"), ("wind_u_80m", "wind_v_80m")]
 ALLOW_TERRAIN_FALLBACK = os.environ.get("TERRAIN_FALLBACK_OK") == "1"
 
 
-def build_frame(sfc, prs, init, lead, index_map, attempts=3):
+def build_frame(sfc, prs, mdl, init, lead, index_map, attempts=3):
     """Read + regrid + rotate all levels for one lead hour.
 
     Returns (frame, valid, wx): (nlev, TILE_H, TILE_W, 3) float16 [u, v, omega],
@@ -46,7 +46,7 @@ def build_frame(sfc, prs, init, lead, index_map, attempts=3):
     last_err = None
     for attempt in range(attempts):
         try:
-            return _build_frame(sfc, prs, init, lead, index_map)
+            return _build_frame(sfc, prs, mdl, init, lead, index_map)
         except Exception as e:  # noqa: BLE001 - network reads; retry then fail
             last_err = e
             log.warning("lead %d attempt %d failed: %s", lead, attempt + 1, e)
@@ -54,7 +54,7 @@ def build_frame(sfc, prs, init, lead, index_map, attempts=3):
     raise RuntimeError(f"lead {lead} failed after {attempts} attempts") from last_err
 
 
-def _build_frame(sfc, prs, init, lead, index_map):
+def _build_frame(sfc, prs, mdl, init, lead, index_map):
     nlev = len(LEVELS)
     frame = np.zeros((nlev, TILE_H, TILE_W, 3), dtype=np.float16)
     valid = np.zeros((nlev, TILE_H, TILE_W), dtype=bool)
@@ -89,7 +89,8 @@ def _build_frame(sfc, prs, init, lead, index_map):
 
     # Weather atlas rides in the same worker pass, reusing this lead's psfc.
     # Quantized to uint8 here (fixed scales) so 49 leads cost ~230 MB total.
-    wx = build_wx_frame(sfc_t, prs_t, index_map, psfc)
+    mdl_t = mdl.sel(init_time=init).isel(lead_time=lead)
+    wx = build_wx_frame(sfc_t, prs_t, mdl_t, index_map, psfc)
     return frame, valid, wx
 
 
@@ -108,6 +109,25 @@ def read_heights(prs, init):
     return out
 
 
+def read_smoke_heights(mdl, sfc, init):
+    """Mean height ABOVE GROUND of each 3D-smoke model level, read once.
+
+    HRRR's native levels are terrain-following, so their height above ground
+    is nearly constant while their height above sea level is not — carrying
+    AGL is what lets a plume sit correctly over a valley and a ridge alike.
+    """
+    try:
+        t = mdl.sel(init_time=init).isel(lead_time=0)
+        gh = t.geopotential_height.sel(model_level=WX_SMOKE_LEVELS).values
+        oro = sfc.sel(init_time=init).isel(lead_time=0).geopotential_height_surface.values
+        return [float(np.nanmean(gh[:, :, i] - oro)) for i in range(len(WX_SMOKE_LEVELS))]
+    except Exception as e:  # noqa: BLE001
+        log.warning("model-level height read failed (%s); using nominal heights", e)
+        return [11, 40, 91, 180, 297, 647, 1103, 1600, 2450, 3344, 5129, 7460][
+            : len(WX_SMOKE_LEVELS)
+        ]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -120,13 +140,14 @@ def main():
     leads = [int(x) for x in args.leads.split()] if args.leads.strip() else LEAD_HOURS
 
     t0 = time.time()
-    sfc, prs = open_datasets()
+    sfc, prs, mdl = open_datasets()
     init = pick_init(prs, args.init, sfc=sfc)
     init_iso = np.datetime_as_string(init, unit="s") + "Z"
     log.info("init=%s leads=%s", init_iso, leads)
 
     index_map = build_index_map(prs.x.values, prs.y.values)
     heights = read_heights(prs, init)
+    smoke_agl = read_smoke_heights(mdl, sfc, init)
 
     orography = sfc.sel(init_time=init).isel(lead_time=0).geopotential_height_surface.values
     # The atlas tile is ~4x coarser than native, so area-average first — point
@@ -168,7 +189,7 @@ def main():
 
     frames_by_lead = {}
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(build_frame, sfc, prs, init, t, index_map): t for t in leads}
+        futs = {ex.submit(build_frame, sfc, prs, mdl, init, t, index_map): t for t in leads}
         for fut in as_completed(futs):
             lead = futs[fut]
             frames_by_lead[lead] = fut.result()
@@ -184,7 +205,8 @@ def main():
     }
     meta = write_output(
         args.out, frames_by_lead, scales, init_iso, heights, terrain,
-        terrain_hi_meta, weather=wx_meta_block(heights_by_plev), fires=fires_meta,
+        terrain_hi_meta, weather=wx_meta_block(heights_by_plev, smoke_agl),
+        fires=fires_meta,
     )
 
     log.info(

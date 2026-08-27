@@ -7,6 +7,7 @@
 import { TERRAIN_GLSL } from "./shaders.js";
 
 export const QC_LEVELS = 12; // condensate tiles in the weather atlas
+export const SMOKE_LEVELS = 12; // 3D smoke tiles (native model levels)
 
 export const CLOUD_VERT = `#version 300 es
 precision highp float;
@@ -63,6 +64,13 @@ uniform float u_night;        // 0 = day, 1 = full night (moonlight floor)
 uniform vec2 u_smokeOff;
 uniform float u_smokeColMax;
 uniform float u_smokeSfcMax;
+// True 3D smoke: one tile per native (terrain-following) model level, with
+// each level's mean height ABOVE GROUND. This is a volume, sampled by the
+// slice stack below, not a column total smeared upward.
+uniform vec2 u_sm3Off[${SMOKE_LEVELS}];
+uniform float u_sm3Agl[${SMOKE_LEVELS}];
+uniform int u_sm3Len;
+uniform float u_sm3Max;
 
 out vec2 v_uv;
 out vec3 v_color;
@@ -70,6 +78,7 @@ out float v_alpha;
 out float v_seed;
 out float v_rf;             // 0..1 "this is a precipitating rain cloud"
 out float v_smoke;          // 0..1 smoke load (SMOKE variant only)
+out float v_lit;            // 0..1 sunlight reaching this smoke sample
 
 const float PI = 3.141592653589793;
 
@@ -113,6 +122,24 @@ float qcAt(vec2 pos, float h) {
   return q * q * u_qcMax;
 }
 
+// Smoke mass density (kg/m3) at a height ABOVE GROUND, interpolated between
+// the two model levels that bracket it — the volume lookup.
+float smokeAt(vec2 pos, float agl) {
+  int lo = 0;
+  for (int k = 0; k < ${SMOKE_LEVELS}; k++) {
+    if (k >= u_sm3Len) break;
+    if (u_sm3Agl[k] <= agl) lo = k;
+  }
+  int hi = min(lo + 1, u_sm3Len - 1);
+  float f = u_sm3Agl[hi] > u_sm3Agl[lo] + 1.0
+    ? clamp((agl - u_sm3Agl[lo]) / (u_sm3Agl[hi] - u_sm3Agl[lo]), 0.0, 1.0)
+    : 0.0;
+  float a = wxTile(u_sm3Off[lo], pos).r;
+  float b = wxTile(u_sm3Off[hi], pos).r;
+  float q = mix(a, b, f);
+  return q * q * u_sm3Max;
+}
+
 void collapse() { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_alpha = 0.0; }
 
 void main() {
@@ -137,6 +164,7 @@ void main() {
   float terr = terrainHeight(pos);
   float base, top, s, h, rf, p, roll, edge;
   float highDeck = 0.0, thinDeck = 0.0;
+  v_lit = 1.0;
 
 #ifdef SMOKE
   // --- HRRR-Smoke plume ----------------------------------------------------
@@ -145,25 +173,46 @@ void main() {
   // valleys instead of floating as an even slab.
   vec4 sk = wxTile(u_smokeOff, pos);
   if (sk.a < 0.5) { collapse(); return; }
-  float smokeCol = sk.r * sk.r * u_smokeColMax;   // kg/m2
-  float smokeSfc = sk.g * sk.g * u_smokeSfcMax;   // kg/m3
-  float load = clamp(smokeCol / 8.0e-5, 0.0, 1.0);
-  base = terr + 30.0;
-  top = terr + mix(300.0, 4500.0, load);
   rf = 0.0;
-  s = (float(layer) + hash12(jitterKey + 3.3)) / float(u_layers);
-  h = mix(base, top, s);
-  // thin haze fades out with height; dense plumes fill their whole depth
-  float dens = smoothstep(2.5e-6, 9.0e-5, smokeCol) * (1.0 - 0.5 * s * (1.0 - load))
-             + smoothstep(2.0e-9, 5.0e-7, smokeSfc) * (1.0 - s) * 0.45;
-  p = clamp(dens, 0.0, 1.0) * u_density;
-  roll = hash12(jitterKey + 11.3);
-  if (roll > p) { collapse(); return; }
-  edge = smoothstep(0.0, 0.4 * p, p - roll);
   v_rf = 0.0;
-  v_smoke = clamp(0.35 + 0.65 * load, 0.0, 1.0);
+
+  // Volume rendering by slice stacking: each layer is one sample plane
+  // through the smoke volume, placed at a real height above ground and
+  // reading the model's own 3D concentration there. Slices are spaced by
+  // equal LOG height so the boundary layer — where nearly all the smoke
+  // sits — gets most of them, instead of wasting them on empty upper air.
+  float slice = (float(layer) + 0.5) / float(u_layers);
+  float aglTop = u_sm3Agl[max(u_sm3Len - 1, 0)];
+  float agl = 20.0 * pow(max(aglTop, 100.0) / 20.0, slice);
+  base = terr;
+  top = terr + aglTop;
+  s = clamp(agl / max(aglTop, 1.0), 0.0, 1.0);
+  h = terr + agl;
+
+  float dens = smokeAt(pos, agl);
+  // Slice thickness: a sample plane stands in for the slab around it, so a
+  // sparse stack must not read thinner than a dense one.
+  float dz = agl * (pow(max(aglTop, 100.0) / 20.0, 1.0 / float(u_layers)) - 1.0);
+  // optical depth through this slab, from mass density x thickness
+  float tau = dens * dz * 1.6e4;
+  p = clamp(tau, 0.0, 1.0) * u_density;
+  roll = hash12(jitterKey + 11.3) * 0.85;  // keep the stack coherent
+  if (roll > p) { collapse(); return; }
+  edge = smoothstep(0.0, 0.5 * p, p - roll);
+  v_smoke = clamp(tau * 2.2, 0.05, 1.0);
+
+  // Self-shadowing: how much smoke stands between this sample and the sun.
+  // This is what gives a plume real volume — a bright lit flank and a dark
+  // core — rather than a flat wash of grey.
+  float shade = 0.0;
+  for (int i = 1; i <= 3; i++) {
+    float d = 900.0 * float(i);
+    vec2 sp = pos + u_sunDir.xy * vec2(d / (111320.0 * u_lonSpan), -d / (110540.0 * u_latSpan));
+    shade += smokeAt(sp, agl + u_sunDir.z * d) * 900.0;
+  }
+  v_lit = exp(-shade * 600.0);
   // smoke lies in flat sheets rather than heaped towers
-  thinDeck = 0.5;
+  thinDeck = 0.55;
 #else
   // --- cloud ---------------------------------------------------------------
   vec4 cl = wxTile(u_cloudOff, pos);
@@ -308,10 +357,13 @@ void main() {
 #ifdef SMOKE
   // Smoke is brown-grey and denser at the base of the plume; it also stays
   // visible at night, when a fire's plume is exactly what you want to see.
-  vec3 smokeLit = (u_ambient * 0.7 + diffuse * 0.3 * sunUp) * u_sunColor
-                * vec3(0.46, 0.40, 0.35) + moon * 0.7;
-  v_color = clamp(smokeLit * mix(0.75, 1.15, s), 0.0, 1.4);
-  v_alpha = 0.30 * v_smoke * fade * edge;
+  // Lit smoke is pale tan; shadowed smoke inside a thick plume goes brown-grey.
+  vec3 sunlit = vec3(0.86, 0.78, 0.68) * (0.45 + 0.55 * sunUp);
+  vec3 shadowed = vec3(0.34, 0.30, 0.30);
+  vec3 smokeLit = mix(shadowed, sunlit, v_lit) * (u_ambient * 0.85 + diffuse * 0.25 * sunUp)
+                * u_sunColor + moon * 0.7;
+  v_color = clamp(smokeLit, 0.0, 1.4);
+  v_alpha = 0.5 * v_smoke * fade * edge;
 #endif
   if (v_alpha < 0.004) collapse();
 }`;
@@ -325,6 +377,7 @@ in float v_alpha;
 in float v_seed;
 in float v_rf;
 in float v_smoke;
+in float v_lit;
 out vec4 outColor;
 
 uniform float u_opacity;

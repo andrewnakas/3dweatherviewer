@@ -11,18 +11,23 @@ log = logging.getLogger(__name__)
 
 
 def open_datasets():
-    """Return (surface_ds, pressure_ds), both lazy xarray Datasets."""
+    """Return (surface_ds, pressure_ds, model_level_ds), all lazy Datasets.
+
+    The model-level group carries the native terrain-following levels, which
+    is where the 3D smoke field (mass_density) lives.
+    """
     sfc = dynamical_catalog.open(DATASET_ID, chunks=None)
     prs = dynamical_catalog.open(DATASET_ID, chunks=None, group="pressure_level")
-    return sfc, prs
+    mdl = dynamical_catalog.open(DATASET_ID, chunks=None, group="model_level")
+    return sfc, prs, mdl
 
 
-def pick_init(prs, requested: str | None = None, max_steps_back: int = 4, sfc=None):
+def pick_init(prs, requested: str | None = None, max_steps_back: int = 6, sfc=None):
     """Choose an init_time whose final lead hour is actually readable.
 
     The virtual dataset lists an init as soon as ingest starts; the last lead
-    hours may not exist yet. Probe lead 48 and step back 6h until a complete
-    init is found. When sfc is given, the surface group is probed too, so an
+    hours may not exist yet. Probe the final lead and step back an init at a
+    time (hourly, on this dataset) until a complete one is found. When sfc is given, the surface group is probed too, so an
     init with wind but missing weather fields is rejected rather than shipping
     black weather tiles.
     """
