@@ -265,6 +265,8 @@ export function initUI(map, layer, meta, weather = null) {
     const tPrecip = $("toggle-precip");
     const tStorms = $("toggle-storms");
     const tRadar = $("toggle-radar");
+    const tSmoke = $("toggle-smoke");
+    const tFires = $("toggle-fires");
     const tSun = $("toggle-sun");
     // Force checkbox state to match the layers (browsers restore ticks across
     // reloads), including the lowmem path that starts with them off.
@@ -272,6 +274,8 @@ export function initUI(map, layer, meta, weather = null) {
     tPrecip.checked = weather.precip?.enabled ?? false;
     tStorms.checked = weather.storms?.enabled ?? false;
     tRadar.checked = weather.radar.enabled !== false;
+    tSmoke.checked = weather.smoke?.enabled ?? false;
+    tFires.checked = weather.fires?.enabled ?? false;
     tSun.checked = weather.lighting.enabled;
 
     tClouds.addEventListener("change", () => {
@@ -287,6 +291,14 @@ export function initUI(map, layer, meta, weather = null) {
       if (weather.rain) weather.rain.enabled = tPrecip.checked;
       map.triggerRepaint();
     });
+    tSmoke.addEventListener("change", () => {
+      if (weather.smoke) weather.smoke.enabled = tSmoke.checked;
+      map.triggerRepaint();
+    });
+    tFires.addEventListener("change", () => {
+      if (weather.fires) weather.fires.enabled = tFires.checked;
+      map.triggerRepaint();
+    });
     tRadar.addEventListener("change", () => weather.radar.setVisible(tRadar.checked));
     tSun.addEventListener("change", () => weather.lighting.setEnabled(tSun.checked));
 
@@ -297,6 +309,13 @@ export function initUI(map, layer, meta, weather = null) {
       weather.radar.setOpacity(Number(rop.value));
       $("radar-op-val").textContent = Number(rop.value).toFixed(2);
     });
+
+    // fire count in the label, so an empty FIRMS snapshot is visible as such
+    const fc = meta.fires?.count;
+    if (fc != null) {
+      const lbl = document.getElementById("fires-label");
+      if (lbl) lbl.textContent = ` Fires — ${fc.toLocaleString()} FIRMS hotspots`;
+    }
 
     const cden = $("cloud-density");
     cden.addEventListener("input", () => {

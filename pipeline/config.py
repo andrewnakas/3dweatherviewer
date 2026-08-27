@@ -89,9 +89,10 @@ WX_TILES = {
     "surface2": 5,     # R gust, G visibility, B snow depth
     "condensate0": 6,  # 12 tiles: R cloud qc+qi, G precip qr+qs+qg, B RH
     "satellite": 18,   # R IR-window BT, G BT-derived cloud top AGL, B WV BT
+    "smoke": 19,       # R column smoke, G near-surface smoke, B aerosol depth
 }
 assert WX_TILES["condensate0"] + len(WX_CONDENSATE_LEVELS) <= WX_TILES["satellite"]
-assert WX_TILES["satellite"] < WX_ATLAS_COLS * WX_ATLAS_ROWS
+assert max(WX_TILES.values()) < WX_ATLAS_COLS * WX_ATLAS_ROWS
 
 # Channel encodings, the single source of truth (mirrored into meta.json).
 # kind: linear (min..max), sqrt (sqrt(v/max), v clipped >= 0), log10
@@ -124,6 +125,12 @@ WX_ENC = {
     "irBT":         {"kind": "linear", "min": 180, "max": 330},  # K, IR window
     "satTop":       {"kind": "linear", "min": 0, "max": 16000},  # m AGL, infilled
     "wvBT":         {"kind": "linear", "min": 180, "max": 280},  # K, water vapor
+    # HRRR-Smoke. Maxes are set from the observed range of a real run
+    # (column p99 4.3e-5, max 5.0e-4 kg/m2; near-surface p99 1.2e-8,
+    # max 2.0e-6 kg/m3), with sqrt encoding so thin haze keeps resolution.
+    "smokeCol":     {"kind": "sqrt", "max": 5.0e-4},   # kg/m2 column smoke
+    "smokeSfc":     {"kind": "sqrt", "max": 2.0e-6},   # kg/m3 near-surface
+    "aod":          {"kind": "linear", "min": 0, "max": 3},  # aerosol optical depth
 }
 
 LEAD_HOURS = list(range(49))  # 0..48

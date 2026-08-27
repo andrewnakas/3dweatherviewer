@@ -22,6 +22,7 @@ from config import (
 from encode import compute_scales, write_output, wx_meta_block
 from hrrr_source import open_datasets, pick_init
 from reproject import build_index_map, regrid, rotate_winds
+from fires import build_fires
 from terrain import build_terrain_fields, write_terrain_png
 from weather import build_wx_frame
 
@@ -157,6 +158,14 @@ def main():
         if not ALLOW_TERRAIN_FALLBACK:
             raise
 
+    # Active fire hotspots ride along with the forecast. A FIRMS outage must
+    # not sink the whole build — the map simply ships without fires.
+    fires_meta = None
+    try:
+        fires_meta = build_fires(args.out)
+    except Exception:  # noqa: BLE001
+        log.exception("FIRMS fetch failed; deploying without fire hotspots")
+
     frames_by_lead = {}
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
         futs = {ex.submit(build_frame, sfc, prs, init, t, index_map): t for t in leads}
@@ -175,7 +184,7 @@ def main():
     }
     meta = write_output(
         args.out, frames_by_lead, scales, init_iso, heights, terrain,
-        terrain_hi_meta, weather=wx_meta_block(heights_by_plev),
+        terrain_hi_meta, weather=wx_meta_block(heights_by_plev), fires=fires_meta,
     )
 
     log.info(

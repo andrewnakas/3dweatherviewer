@@ -11,7 +11,11 @@ import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, t
 
 export class CloudLayer {
   constructor(map, meta, windLayer, lighting, wxShared, opts = {}) {
-    this.id = "cloud-puffs";
+    // variant "cloud" (default) or "smoke": same billboard machinery, two
+    // compiled programs (see the SMOKE define), so smoke plumes get the
+    // lattice, terrain, occlusion and lighting for free.
+    this.variant = opts.variant ?? "cloud";
+    this.id = this.variant === "smoke" ? "smoke-plumes" : "cloud-puffs";
     this.type = "custom";
     this.renderingMode = "3d";
     this.map = map;
@@ -31,7 +35,8 @@ export class CloudLayer {
   onAdd(map, gl) {
     if (!(gl instanceof WebGL2RenderingContext)) throw new Error("WebGL2 required");
     this.gl = gl;
-    this.prog = compile(gl, CLOUD_VERT, CLOUD_FRAG);
+    this.prog = compile(gl, CLOUD_VERT, CLOUD_FRAG,
+      this.variant === "smoke" ? "#define SMOKE" : "");
     this.U = uniforms(gl, this.prog);
     this.vao = gl.createVertexArray();
     this.blankTex = makeBlankTex(gl);
@@ -85,6 +90,8 @@ export class CloudLayer {
     // field instead of the field following the camera.
     const G = this.grid;
     const { cell, ic0 } = tieredLattice(spawn, G, 5, b);
+    const light = this.lighting?.state
+      ?? { sunDir: [0, 0, 1], sunColor: [1, 1, 1], ambient: 1, nightFactor: 0 };
     gl.uniform1i(U.u_grid, G);
     gl.uniform1i(U.u_layers, this.layers);
     gl.uniform2fv(U.u_cell, cell);
@@ -96,7 +103,6 @@ export class CloudLayer {
     gl.uniform3fv(U.u_camRight, [Math.cos(br), -Math.sin(br), 0]);
     gl.uniform3fv(U.u_camUp, [Math.sin(br) * Math.cos(pt), Math.cos(br) * Math.cos(pt), Math.sin(pt)]);
 
-    const light = this.lighting?.state ?? { sunDir: [0, 0, 1], sunColor: [1, 1, 1], ambient: 1 };
     gl.uniform3fv(U.u_sunDir, light.sunDir);
     gl.uniform3fv(U.u_sunColor, light.sunColor);
     gl.uniform1f(U.u_ambient, light.ambient);
@@ -143,6 +149,12 @@ export class CloudLayer {
       gl.uniform1f(U.u_btMax, w.enc.irBT.max);
     }
     gl.uniform1f(U.u_time, (performance.now() / 1000) % 1000);
+    gl.uniform1f(U.u_night, light.nightFactor ?? 0);
+    if (w.tiles.smoke != null && w.enc.smokeCol) {
+      gl.uniform2fv(U.u_smokeOff, off(w.tiles.smoke));
+      gl.uniform1f(U.u_smokeColMax, w.enc.smokeCol.max);
+      gl.uniform1f(U.u_smokeSfcMax, w.enc.smokeSfc.max);
+    }
     gl.uniform2fv(U.u_qcOff, this.qcOff);
     gl.uniform1fv(U.u_qcHeight, this.qcHeight);
     gl.uniform1i(U.u_qcLen, this.qcLen);

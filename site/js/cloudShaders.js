@@ -58,12 +58,18 @@ uniform float u_rateMax;
 uniform float u_btMin;
 uniform float u_btMax;
 uniform float u_time;
+uniform float u_night;        // 0 = day, 1 = full night (moonlight floor)
+// smoke variant (compiled with -DSMOKE): HRRR-Smoke column / near-surface load
+uniform vec2 u_smokeOff;
+uniform float u_smokeColMax;
+uniform float u_smokeSfcMax;
 
 out vec2 v_uv;
 out vec3 v_color;
 out float v_alpha;
 out float v_seed;
 out float v_rf;             // 0..1 "this is a precipitating rain cloud"
+out float v_smoke;          // 0..1 smoke load (SMOKE variant only)
 
 const float PI = 3.141592653589793;
 
@@ -128,20 +134,51 @@ void main() {
   if (pos.x < 0.0 || pos.x > 1.0 || pos.y < 0.0 || pos.y > 1.0) { collapse(); return; }
   v_seed = hash12(jitterKey + 7.7);
 
+  float terr = terrainHeight(pos);
+  float base, top, s, h, rf, p, roll, edge;
+  float highDeck = 0.0, thinDeck = 0.0;
+
+#ifdef SMOKE
+  // --- HRRR-Smoke plume ----------------------------------------------------
+  // Column load sets how deep the plume is and how solid it reads; the
+  // near-surface field thickens the bottom, which is what makes smoke sit in
+  // valleys instead of floating as an even slab.
+  vec4 sk = wxTile(u_smokeOff, pos);
+  if (sk.a < 0.5) { collapse(); return; }
+  float smokeCol = sk.r * sk.r * u_smokeColMax;   // kg/m2
+  float smokeSfc = sk.g * sk.g * u_smokeSfcMax;   // kg/m3
+  float load = clamp(smokeCol / 8.0e-5, 0.0, 1.0);
+  base = terr + 30.0;
+  top = terr + mix(300.0, 4500.0, load);
+  rf = 0.0;
+  s = (float(layer) + hash12(jitterKey + 3.3)) / float(u_layers);
+  h = mix(base, top, s);
+  // thin haze fades out with height; dense plumes fill their whole depth
+  float dens = smoothstep(2.5e-6, 9.0e-5, smokeCol) * (1.0 - 0.5 * s * (1.0 - load))
+             + smoothstep(2.0e-9, 5.0e-7, smokeSfc) * (1.0 - s) * 0.45;
+  p = clamp(dens, 0.0, 1.0) * u_density;
+  roll = hash12(jitterKey + 11.3);
+  if (roll > p) { collapse(); return; }
+  edge = smoothstep(0.0, 0.4 * p, p - roll);
+  v_rf = 0.0;
+  v_smoke = clamp(0.35 + 0.65 * load, 0.0, 1.0);
+  // smoke lies in flat sheets rather than heaped towers
+  thinDeck = 0.5;
+#else
+  // --- cloud ---------------------------------------------------------------
   vec4 cl = wxTile(u_cloudOff, pos);
   if (cl.a < 0.5) { collapse(); return; }
   float cover = cl.r;                       // 0..1 (percent/100 -> byte/255)
-  float base = decodeZ(cl.g, u_hMax);
-  float top = decodeZ(cl.b, u_hMax);
+  base = decodeZ(cl.g, u_hMax);
+  top = decodeZ(cl.b, u_hMax);
   if (cover < 0.03 || top <= base + 60.0) { collapse(); return; }
-
-  float terr = terrainHeight(pos);
+  v_smoke = 0.0;
 
   // Precipitation alignment: a cloud over a radar echo, model surface rain,
   // or a satellite deep-cold top is a RAIN CLOUD (v_rf drives dark shading,
   // density and size). The satellite BT-derived top also lifts the deck
   // where the IR says the cloud reaches higher than the model's top field.
-  float rf = 0.0;
+  rf = 0.0;
   if (u_hasSat > 0.5) {
     vec4 sat = wxTile(u_satOff, pos);
     float irBT = mix(u_btMin, u_btMax, sat.r);
@@ -163,8 +200,8 @@ void main() {
   v_rf = rf;
 
   // vertical slot inside [base, top]
-  float s = (float(layer) + hash12(jitterKey + 3.3)) / float(u_layers);
-  float h = mix(base, top, s);
+  s = (float(layer) + hash12(jitterKey + 3.3)) / float(u_layers);
+  h = mix(base, top, s);
 
   // which cover band is this height in? low <3 km, mid 3-6, high >6 (ASL)
   vec4 lmh = wxTile(u_layersOff, pos);
@@ -179,13 +216,14 @@ void main() {
   // condensate makes the honest 3D structure; keep a floor so shallow
   // stratus below the lowest condensate level still shows
   float qf = clamp(qcAt(pos, h) / 3.5e-4, 0.0, 1.0);
-  float p = coverEff * (0.35 + 0.65 * max(qf, rf)) * (1.0 + 1.2 * rf) * u_density;
-  float roll = hash12(jitterKey + 11.3);
+  p = coverEff * (0.35 + 0.65 * max(qf, rf)) * (1.0 + 1.2 * rf) * u_density;
+  roll = hash12(jitterKey + 11.3);
   if (roll > p) { collapse(); return; }
   // soft edge: puffs that barely made the cut are wispier
-  float edge = smoothstep(0.0, 0.25 * p, p - roll);
+  edge = smoothstep(0.0, 0.25 * p, p - roll);
+#endif
 
-  float zAgl = max(h - terr, 120.0);
+  float zAgl = max(h - terr, 30.0);
 
   // Cloud type shaping from height, thickness and precip state: high decks
   // (cirrus family) and thin sheets (stratus) flatten and widen; rain clouds
@@ -193,8 +231,10 @@ void main() {
   // deck visibly alive during playback.
   float baseAgl = max(base - terr, 0.0);
   float depthM = max(top - base, 100.0);
-  float highDeck = smoothstep(5000.0, 7000.0, baseAgl) * (1.0 - rf);
-  float thinDeck = smoothstep(1500.0, 500.0, depthM) * (1.0 - rf);
+#ifndef SMOKE
+  highDeck = smoothstep(5000.0, 7000.0, baseAgl) * (1.0 - rf);
+  thinDeck = smoothstep(1500.0, 500.0, depthM) * (1.0 - rf);
+#endif
   float flatten = clamp(0.55 * highDeck + 0.45 * thinDeck, 0.0, 0.6);
 
   // puff radius: scaled to the depth of the deck and the lattice spacing so
@@ -252,13 +292,27 @@ void main() {
   float sunUp = clamp(u_sunDir.z, 0.0, 1.0);
   float vshade = mix(0.72, 1.05, s);  // darker toward the deck's base
   vec3 lit = (u_ambient * 0.55 + diffuse * 0.6 * sunUp) * u_sunColor;
-  vec3 col = lit * vshade * vec3(0.98, 0.99, 1.0);
+  // Moonlight floor. With only sun terms, everything after sunset went to
+  // near-black and the whole field vanished — the sun is below the horizon
+  // for a third of any 48 h forecast, so night has to stay readable: pale
+  // silver-blue, lit from above rather than from the (absent) sun.
+  vec3 moon = u_night * vec3(0.30, 0.36, 0.50) * (0.75 + 0.25 * n.z);
+  vec3 col = lit * vshade * vec3(0.98, 0.99, 1.0) + moon;
   // rain clouds: heavy grey, mostly ambient-lit, deepening with intensity —
   // but never so dark they vanish against the dusk basemap
   vec3 rainCol = (u_ambient * 0.75 + diffuse * 0.15 * sunUp) * u_sunColor
-               * vec3(0.55, 0.58, 0.65) * (1.0 - 0.22 * rf) * mix(0.8, 1.1, s);
+               * vec3(0.55, 0.58, 0.65) * (1.0 - 0.22 * rf) * mix(0.8, 1.1, s)
+               + moon * 0.8;
   v_color = clamp(mix(col, rainCol, rf * 0.8), 0.0, 1.4);
   v_alpha = 0.36 * (1.0 + 0.7 * rf) * (1.0 - 0.3 * highDeck) * fade * edge;
+#ifdef SMOKE
+  // Smoke is brown-grey and denser at the base of the plume; it also stays
+  // visible at night, when a fire's plume is exactly what you want to see.
+  vec3 smokeLit = (u_ambient * 0.7 + diffuse * 0.3 * sunUp) * u_sunColor
+                * vec3(0.46, 0.40, 0.35) + moon * 0.7;
+  v_color = clamp(smokeLit * mix(0.75, 1.15, s), 0.0, 1.4);
+  v_alpha = 0.30 * v_smoke * fade * edge;
+#endif
   if (v_alpha < 0.004) collapse();
 }`;
 
@@ -270,6 +324,7 @@ in vec3 v_color;
 in float v_alpha;
 in float v_seed;
 in float v_rf;
+in float v_smoke;
 out vec4 outColor;
 
 uniform float u_opacity;
@@ -293,7 +348,12 @@ void main() {
   // broken cauliflower edge: two octaves of value noise, seeded per puff
   vec2 np = v_uv * 3.0 + v_seed * 37.0;
   float noise = 0.65 * vnoise(np) + 0.35 * vnoise(np * 2.7 + 11.0);
+#ifdef SMOKE
+  // smoke has no crisp cauliflower edge — it is a soft, wide gradient
+  float body = smoothstep(1.0, 0.0, d + (noise - 0.5) * 0.3);
+#else
   float body = smoothstep(1.0, 0.25, d + (noise - 0.5) * 0.55);
+#endif
   float a = v_alpha * body * u_opacity;
   // rain clouds get moodier cores
   vec3 color = v_color * (1.0 - 0.18 * v_rf * (1.0 - d));

@@ -61,6 +61,10 @@ SFC_VARS = [
     "brightness_temperature_channel_114",
     "brightness_temperature_channel_123",
     "brightness_temperature_channel_124",
+    # HRRR-Smoke
+    "column_integrated_mass_density_atmosphere",
+    "mass_density_8m",
+    "aerosol_optical_thickness_atmosphere",
 ]
 
 
@@ -161,6 +165,15 @@ def build_wx_frame(sfc_t, prs_t, index_map, psfc):
         quantize(rg("wind_gust_surface"), WX_ENC["gust"]),
         quantize(rg("visibility_surface"), WX_ENC["visibility"]),
         quantize(rg("snow_thickness_surface"), WX_ENC["snowDepth"]),
+        domain,
+    )
+
+    # --- smoke: HRRR-Smoke column + near-surface load, and aerosol depth -----
+    encode_wx_tile(
+        atlas, WX_TILES["smoke"],
+        quantize(rg("column_integrated_mass_density_atmosphere"), WX_ENC["smokeCol"]),
+        quantize(rg("mass_density_8m"), WX_ENC["smokeSfc"]),
+        quantize(rg("aerosol_optical_thickness_atmosphere"), WX_ENC["aod"]),
         domain,
     )
 

@@ -32,6 +32,12 @@
         <input type="checkbox" id="toggle-radar"> Radar map (draped)
       </label>
       <label class="row">
+        <input type="checkbox" id="toggle-smoke" checked> Wildfire smoke (HRRR-Smoke)
+      </label>
+      <label class="row">
+        <input type="checkbox" id="toggle-fires" checked><span id="fires-label"> Fires (NASA FIRMS)</span>
+      </label>
+      <label class="row">
         <input type="checkbox" id="toggle-sun" checked> Sun &amp; day/night lighting
       </label>
       <div class="hint" id="sun-readout"></div>
@@ -99,6 +105,7 @@
 
     <div class="attrib">
       Data: <a href="https://dynamical.org/catalog/noaa-hrrr-forecast-48-hour-virtual/" target="_blank">NOAA HRRR via dynamical.org</a><br>
+      Fires: <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank">NASA FIRMS</a> VIIRS · Smoke: HRRR-Smoke<br>
       Terrain: AWS Terrain Tiles · Imagery © Esri, Maxar, Earthstar Geographics
     </div>
   </div>

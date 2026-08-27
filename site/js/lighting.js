@@ -18,8 +18,11 @@ const rgb = (c) => `rgb(${c.map((v) => Math.round(clamp01(v) * 255)).join(",")})
 // Sky keyframes by sun elevation (degrees): night, civil twilight, golden
 // hour, day. Colors picked for the dark satellite-imagery basemap.
 const KEYS = [
-  { el: -12, sky: [0.02, 0.03, 0.06], horizon: [0.04, 0.06, 0.12], sun: [0.25, 0.30, 0.45], ambient: 0.30 },
-  { el: -6,  sky: [0.07, 0.10, 0.22], horizon: [0.45, 0.28, 0.38], sun: [0.60, 0.55, 0.65], ambient: 0.45 },
+  // Night is moonlit, not black: a viewer scrubbing to 3 AM still has to see
+  // the clouds, the rain and the terrain. Real darkness reads as a broken
+  // page, so the night keys sit well above physical night luminance.
+  { el: -12, sky: [0.05, 0.07, 0.14], horizon: [0.10, 0.13, 0.22], sun: [0.55, 0.62, 0.80], ambient: 0.62 },
+  { el: -6,  sky: [0.09, 0.13, 0.26], horizon: [0.45, 0.32, 0.44], sun: [0.70, 0.68, 0.78], ambient: 0.70 },
   { el: 0,   sky: [0.18, 0.30, 0.50], horizon: [0.95, 0.63, 0.35], sun: [1.00, 0.72, 0.45], ambient: 0.70 },
   { el: 10,  sky: [0.29, 0.56, 0.85], horizon: [0.78, 0.86, 0.94], sun: [1.00, 0.98, 0.92], ambient: 1.00 },
 ];
@@ -117,9 +120,9 @@ export class Lighting {
     // Imagery day/night: full brightness above +10 deg, floor below civil
     // twilight. DSWRF (clouds) can only darken the daytime end.
     const day = smooth(-6, 10, elevationDeg);
-    const b = (0.22 + 0.78 * day) * (this.enabled ? this.cloudDim : 1);
+    const b = (0.40 + 0.60 * day) * (this.enabled ? this.cloudDim : 1);
     try {
-      this.map.setPaintProperty("imagery", "raster-brightness-max", Math.max(0.15, b));
+      this.map.setPaintProperty("imagery", "raster-brightness-max", Math.max(0.34, b));
       this.map.setPaintProperty("imagery", "raster-saturation", -0.45 * (1 - day));
     } catch { /* style may not have the imagery layer */ }
   }

@@ -9,6 +9,7 @@ import { Lighting } from "./lighting.js";
 import { PrecipLayer } from "./precipLayer.js";
 import { CloudLayer } from "./cloudLayer.js";
 import { StormLayer } from "./stormLayer.js";
+import { FireLayer } from "./fireLayer.js";
 import { FrameManager } from "./frames.js";
 import { AGL_LADDER_FULL, fullColumnIndices } from "./atmosphere.js";
 
@@ -159,21 +160,35 @@ async function main() {
             weather.wxShared, { particleCount: isMobile ? 16384 : 65536 });
           weather.clouds = new CloudLayer(map, meta, layer, weather.lighting,
             weather.wxShared, { grid: isMobile ? 44 : 72 });
+          // HRRR-Smoke plumes: same billboard machinery, SMOKE variant
+          weather.smoke = new CloudLayer(map, meta, layer, weather.lighting,
+            weather.wxShared, { grid: isMobile ? 44 : 72, variant: "smoke", layers: 4 });
+          weather.fires = new FireLayer(map, meta, layer);
           if (lowmem) {
             weather.precip.enabled = false;
             weather.clouds.enabled = false;
             weather.storms.enabled = false;
             weather.rain.enabled = false;
+            weather.smoke.enabled = false;
           }
           try {
             map.addLayer(weather.storms);
             map.addLayer(weather.rain);
             map.addLayer(weather.precip);
+            map.addLayer(weather.smoke);
             map.addLayer(weather.clouds);
+            map.addLayer(weather.fires);
           } catch (e) {
             console.warn("weather layers unavailable:", e.message);
           }
           weather.radar.setTime(0); // first paint before any slider move
+          // FIRMS hotspots: a snapshot next to the forecast, not a live feed
+          if (meta.fires?.file) {
+            fetch(`data/${meta.fires.file}?v=${encodeURIComponent(meta.init_time)}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => { if (d?.fires?.length) weather.fires.setFires(d.fires); })
+              .catch((e) => console.warn("fire hotspots unavailable:", e.message));
+          }
           window.__weather = weather; // debugging hook
         }
         initUI(map, layer, meta, weather);

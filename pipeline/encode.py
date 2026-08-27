@@ -168,7 +168,7 @@ def encode_frame(frame, valid, scales, terrain=None, t_range=None):
 
 def write_output(
     out_dir, frames_by_lead, scales, init_time_iso, heights, terrain,
-    terrain_hi=None, weather=None,
+    terrain_hi=None, weather=None, fires=None,
 ):
     """frames_by_lead: {lead: (frame, valid, wx_atlas_or_None)};
     heights: per-level meters ASL;
@@ -205,6 +205,7 @@ def write_output(
         "terrain": {"index": TERRAIN_TILE_INDEX, "hMin": t_range[0], "hMax": t_range[1]},
         **({"terrainHi": terrain_hi} if terrain_hi else {}),
         **({"weather": weather} if weather else {}),
+        **({"fires": fires} if fires else {}),
         "frames": frame_entries,
         "levels": [
             {
