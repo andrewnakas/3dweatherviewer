@@ -334,7 +334,7 @@ export function initUI(map, layer, meta, weather = null) {
       if (weather.clouds) weather.clouds.density = Number(cden.value);
       // the same control thickens smoke, so a thin regional haze can be
       // pushed up to something you can actually see
-      if (weather.smoke) weather.smoke.density = Number(cden.value);
+      if (weather.smoke) weather.smoke.density = Number(cden.value) * 1.5;
       $("cloud-den-val").textContent = `${Number(cden.value).toFixed(1)}×`;
       map.triggerRepaint();
     });

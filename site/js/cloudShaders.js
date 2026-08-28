@@ -195,11 +195,17 @@ void main() {
   float dz = agl * (pow(max(aglTop, 100.0) / 20.0, 1.0 / float(u_layers)) - 1.0);
   // optical depth through this slab, from mass density x thickness
   float tau = dens * dz * 1.6e4;
-  p = clamp(tau, 0.0, 1.0) * u_density;
+  // Smoke spans orders of magnitude — a plume core is ~1e-6 kg/m3 while the
+  // regional haze around it is ~1e-8. Linear opacity showed only the cores
+  // and dropped everything else below one slice in thirty, so the haze that
+  // actually covers the map went missing. A power curve lifts thin smoke
+  // into view while leaving dense cores saturated.
+  float vis = clamp(pow(tau, 0.55) * 1.6, 0.0, 1.0);
+  p = vis * u_density;
   roll = hash12(jitterKey + 11.3) * 0.85;  // keep the stack coherent
   if (roll > p) { collapse(); return; }
   edge = smoothstep(0.0, 0.5 * p, p - roll);
-  v_smoke = clamp(tau * 2.2, 0.05, 1.0);
+  v_smoke = clamp(vis * 1.15, 0.08, 1.0);
 
   // Self-shadowing: how much smoke stands between this sample and the sun.
   // This is what gives a plume real volume — a bright lit flank and a dark
@@ -363,7 +369,7 @@ void main() {
   vec3 smokeLit = mix(shadowed, sunlit, v_lit) * (u_ambient * 0.85 + diffuse * 0.25 * sunUp)
                 * u_sunColor + moon * 0.7;
   v_color = clamp(smokeLit, 0.0, 1.4);
-  v_alpha = 0.5 * v_smoke * fade * edge;
+  v_alpha = 0.58 * v_smoke * fade * edge;
 #endif
   if (v_alpha < 0.004) collapse();
 }`;

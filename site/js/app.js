@@ -165,6 +165,9 @@ async function main() {
             weather.wxShared, { grid: isMobile ? 40 : 64, variant: "smoke",
               // slice count IS the volume's vertical resolution
               layers: isMobile ? 10 : 16 });
+          // smoke is thin next to cloud, so it starts pushed up; the Cloud
+          // density slider scales it from here
+          weather.smoke.density = 1.5;
           weather.fires = new FireLayer(map, meta, layer);
           if (lowmem) {
             weather.precip.enabled = false;
