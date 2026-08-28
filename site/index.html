@@ -41,6 +41,7 @@
         <input type="checkbox" id="toggle-sun" checked> Sun &amp; day/night lighting
       </label>
       <div class="hint" id="sun-readout"></div>
+      <div class="hint" id="weather-status"></div>
 
       <label for="radar-opacity">Radar map opacity <span id="radar-op-val">0.5</span></label>
       <input type="range" id="radar-opacity" min="0" max="1" step="0.05" value="0.5">
@@ -104,7 +105,7 @@
     <canvas id="legend" width="220" height="34"></canvas>
 
     <div class="attrib">
-      Data: <a href="https://dynamical.org/catalog/noaa-hrrr-forecast-48-hour-virtual/" target="_blank">NOAA HRRR via dynamical.org</a><br>
+      Data: <a href="https://dynamical.org/catalog/noaa-hrrr-forecast-18-hour-virtual/" target="_blank">NOAA HRRR via dynamical.org</a><br>
       Fires: <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank">NASA FIRMS</a> VIIRS · Smoke: HRRR-Smoke<br>
       Terrain: AWS Terrain Tiles · Imagery © Esri, Maxar, Earthstar Geographics
     </div>
@@ -124,7 +125,7 @@
 
   <div id="timebar">
     <button id="play" title="Play/pause">▶</button>
-    <input type="range" id="time-slider" min="0" max="48" step="1" value="0">
+    <input type="range" id="time-slider" min="0" max="18" step="1" value="0">
     <div id="time-label">+0 h</div>
   </div>
 

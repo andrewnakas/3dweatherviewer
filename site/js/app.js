@@ -119,9 +119,13 @@ async function main() {
       const wxShared = {
         fm: null,
         get(gl) {
+          // Cache fewer weather atlases than wind ones: at 7x5 tiles each
+          // is ~17 MB of GPU memory, and together with the wind atlases and
+          // the terrain texture a full cache is what tips a weak GPU into a
+          // context loss.
           this.fm ??= new FrameManager(gl, {
             init_time: meta.init_time, frames: meta.weather.frames,
-          });
+          }, "data/", 3);
           return this.fm;
         },
       };
@@ -170,11 +174,16 @@ async function main() {
           weather.smoke.density = 1.5;
           weather.fires = new FireLayer(map, meta, layer);
           if (lowmem) {
-            weather.precip.enabled = false;
-            weather.clouds.enabled = false;
-            weather.storms.enabled = false;
-            weather.rain.enabled = false;
-            weather.smoke.enabled = false;
+            // Degrade, do not delete. Switching every weather layer off left
+            // a machine that had hiccuped once showing no weather at all for
+            // the rest of the session, with no way back except a new tab.
+            // Shrink the budgets instead: the scene stays complete, just
+            // coarser.
+            weather.clouds.grid = 32;
+            weather.smoke.grid = 28;
+            weather.smoke.layers = 8;
+            weather.rain.grid = 40;
+            weather.precip.setParticleCount(8192);
           }
           try {
             map.addLayer(weather.storms);

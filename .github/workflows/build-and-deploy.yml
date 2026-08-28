@@ -44,13 +44,13 @@ jobs:
 
       - name: Build weather frames
         run: |
+          # Every deploy builds the FULL forecast. A push used to ship a
+          # 3-lead subset for speed, but GitHub throttles scheduled runs
+          # (hourly cron fired twice one day, not 24 times), so whenever a
+          # push was the last successful deploy the site sat on three
+          # forecast hours until a schedule happened to land. Correctness of
+          # the deployed artifact beats a faster inner loop.
           LEADS='${{ github.event.inputs.leads }}'
-          # Push builds deploy a quick 3-lead subset so code changes are
-          # testable in minutes. Scheduled runs — and manual runs without a
-          # subset — build the full 0-18 h forecast.
-          if [ -z "$LEADS" ] && [ "${{ github.event_name }}" = "push" ]; then
-            LEADS="0 3 6"
-          fi
           WORKERS='${{ github.event.inputs.workers }}'
           PYTHONPATH=pipeline python pipeline/build_frames.py \
             --out site/data --workers "${WORKERS:-4}" ${LEADS:+--leads "$LEADS"}

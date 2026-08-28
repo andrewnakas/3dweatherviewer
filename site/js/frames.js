@@ -8,7 +8,7 @@ const CACHE_MAX = 4;
 const UPLOAD_UNIT = 12;
 
 export class FrameManager {
-  constructor(gl, meta, basePath = "data/") {
+  constructor(gl, meta, basePath = "data/", cacheMax = CACHE_MAX) {
     this.gl = gl;
     this.meta = meta;
     this.basePath = basePath;
@@ -17,6 +17,7 @@ export class FrameManager {
     this.lru = [];
     this.version = encodeURIComponent(meta.init_time);
     this.leads = meta.frames.map((f) => f.lead_hours);
+    this.cacheMax = cacheMax;
   }
 
   nearestLead(t) {
@@ -145,7 +146,7 @@ export class FrameManager {
   }
 
   evict() {
-    while (this.lru.length > CACHE_MAX) {
+    while (this.lru.length > this.cacheMax) {
       const lead = this.lru.shift();
       const tex = this.textures.get(lead);
       if (tex) this.gl.deleteTexture(tex);

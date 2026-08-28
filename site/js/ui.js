@@ -322,6 +322,32 @@ export function initUI(map, layer, meta, weather = null) {
       $("radar-op-val").textContent = Number(rop.value).toFixed(2);
     });
 
+    // Data status. A silent degradation is the worst kind: when the weather
+    // layers were quietly switched off after a GPU hiccup, or a deploy left
+    // only a few forecast hours, the page just looked empty with nothing to
+    // explain it. Say what was actually loaded.
+    const status = $("weather-status");
+    const ageH = (Date.now() - init.getTime()) / 3600e3;
+    const bits = [
+      `${meta.weather.frames.length} h of forecast`,
+      `data ${ageH < 1 ? "under 1 h" : `${Math.round(ageH)} h`} old`,
+    ];
+    if (sessionStorage.getItem("lowmem")) bits.push("reduced quality");
+    status.textContent = bits.join(" · ");
+    if (sessionStorage.getItem("lowmem")) {
+      const reset = document.createElement("button");
+      reset.textContent = "reset";
+      status.append(" ");
+      reset.style.cssText = "margin-left:6px;background:none;border:1px solid rgba(255,255,255,.25);"
+        + "color:#a8b6ca;border-radius:4px;font-size:9.5px;cursor:pointer;padding:1px 5px";
+      reset.title = "Clear the reduced-quality flag and reload at full detail";
+      reset.addEventListener("click", () => {
+        sessionStorage.removeItem("lowmem");
+        location.reload();
+      });
+      status.appendChild(reset);
+    }
+
     // fire count in the label, so an empty FIRMS snapshot is visible as such
     const fc = meta.fires?.count;
     if (fc != null) {
