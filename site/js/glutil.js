@@ -142,11 +142,35 @@ export function cameraDomainPos(map, b) {
   const lonSpan = b.east - b.west;
   const latSpan = b.north - b.south;
   let camX = 0.5, camY = 0.5, camAlt = 0;
+  const tr = map.transform;
   try {
-    const cam = map.transform.getCameraPosition();
-    camAlt = cam.altitude;
-    camX = (cam.lngLat.lng - b.west) / lonSpan;
-    camY = (b.north - cam.lngLat.lat) / latSpan;
+    // MapLibre v5 split getCameraPosition() into two accessors and removed the
+    // original. The catch below made that removal INVISIBLE: it fell back to
+    // (0.5, 0.5, 0) — the middle of the data domain at sea level — and every
+    // layer then measured its distance fade against a camera somewhere over
+    // Kansas. Over the Pacific Northwest that is 2,500 km, the fade cuts in at
+    // a few km, and the entire volume renders at zero alpha. No error, no
+    // warning, nothing on screen.
+    let lngLat = null;
+    if (typeof tr?.getCameraLngLat === "function") {
+      lngLat = tr.getCameraLngLat();
+      camAlt = tr.getCameraAltitude();
+    } else if (typeof tr?.getCameraPosition === "function") {
+      const cam = tr.getCameraPosition();
+      lngLat = cam.lngLat;
+      camAlt = cam.altitude;
+    }
+    if (lngLat) {
+      camX = (lngLat.lng - b.west) / lonSpan;
+      camY = (b.north - lngLat.lat) / latSpan;
+    } else {
+      // Say so rather than quietly drawing nothing.
+      if (!cameraDomainPos._warned) {
+        cameraDomainPos._warned = true;
+        console.warn("cameraDomainPos: no camera accessor on this MapLibre; " +
+                     "volumes will fade out. Check the transform API.");
+      }
+    }
   } catch { camAlt = 0; }
   return { camX, camY, camAlt };
 }
