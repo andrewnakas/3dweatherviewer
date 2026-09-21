@@ -11,7 +11,7 @@
 //   14/15 wind atlas A/B.
 
 import { QUAD_VERT, PRECIP_UPDATE_FRAG, PRECIP_DRAW_VERT, PRECIP_DRAW_FRAG } from "./precipShaders.js";
-import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, metersToMercator } from "./glutil.js";
 
 class PrecipState {
   constructor(gl, size) {
@@ -250,7 +250,7 @@ export class PrecipLayer {
 
     // ---- draw passes ----
     const center = this.map.getCenter();
-    const m2merc = maplibregl.MercatorCoordinate.fromLngLat(center, 1).z;
+    const m2merc = metersToMercator(center.lat);
     let altScale = this.windLayer.altScale ?? 1;
 
     gl.useProgram(this.drawProg);

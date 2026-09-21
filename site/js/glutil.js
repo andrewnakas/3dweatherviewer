@@ -150,3 +150,18 @@ export function cameraDomainPos(map, b) {
   } catch { camAlt = 0; }
   return { camX, camY, camAlt };
 }
+
+// Metres -> mercator units at a latitude.
+//
+// This was `maplibregl.MercatorCoordinate.fromLngLat(center, 1).z`, which reads
+// the library off the window. That is free when the page loads MapLibre from a
+// script tag and it is a ReferenceError the moment these modules are imported
+// into a bundle — where MapLibre is a module import with no global at all.
+// The value is one line of arithmetic and MapLibre computes it the same way
+// (`altitude / (EARTH_CIRCUMFERENCE * cos(lat))`), so owning it removes the
+// dependency without changing a single rendered pixel.
+export const EARTH_CIRCUMFERENCE = 40075016.686;
+
+export function metersToMercator(latitude) {
+  return 1 / (EARTH_CIRCUMFERENCE * Math.cos((latitude * Math.PI) / 180));
+}

@@ -10,7 +10,7 @@
 // Texture units: 10 fire data, 13 hi-res terrain.
 
 import { FIRE_VERT, FIRE_FRAG } from "./fireShaders.js";
-import { compile, uniforms, makeBlankTex, cameraDomainPos } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, cameraDomainPos, metersToMercator } from "./glutil.js";
 
 const TEX_W = 256; // fires are laid out row-major in a 256-wide float texture
 
@@ -88,7 +88,7 @@ export class FireLayer {
 
     const b = this.meta.bounds;
     const center = this.map.getCenter();
-    const m2merc = maplibregl.MercatorCoordinate.fromLngLat(center, 1).z;
+    const m2merc = metersToMercator(center.lat);
     const mpp = 156543.03392 * Math.cos((center.lat * Math.PI) / 180)
       / Math.pow(2, this.map.getZoom());
 

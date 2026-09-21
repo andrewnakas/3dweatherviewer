@@ -9,7 +9,7 @@
 // as the cloud layer; separate draw calls make sharing safe).
 
 import { STORM_VERT, STORM_FRAG } from "./stormShaders.js";
-import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice, metersToMercator } from "./glutil.js";
 
 export class StormLayer {
   constructor(map, meta, windLayer, lighting, wxShared, opts = {}) {
@@ -67,7 +67,7 @@ export class StormLayer {
     const w = this.meta.weather;
     const spawn = computeSpawnBounds(this.map, b);
     const center = this.map.getCenter();
-    const m2merc = maplibregl.MercatorCoordinate.fromLngLat(center, 1).z;
+    const m2merc = metersToMercator(center.lat);
     const altScale = this.windLayer.altScale ?? 1;
 
     gl.useProgram(this.prog);

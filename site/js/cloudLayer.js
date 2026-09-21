@@ -7,7 +7,7 @@
 // same units are safe).
 
 import { CLOUD_VERT, CLOUD_FRAG, QC_LEVELS, SMOKE_LEVELS } from "./cloudShaders.js";
-import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice, metersToMercator } from "./glutil.js";
 
 export class CloudLayer {
   constructor(map, meta, windLayer, lighting, wxShared, opts = {}) {
@@ -93,7 +93,7 @@ export class CloudLayer {
     const w = this.meta.weather;
     const spawn = computeSpawnBounds(this.map, b);
     const center = this.map.getCenter();
-    const m2merc = maplibregl.MercatorCoordinate.fromLngLat(center, 1).z;
+    const m2merc = metersToMercator(center.lat);
     const altScale = this.windLayer.altScale ?? 1;
 
     gl.useProgram(this.prog);

@@ -47,8 +47,20 @@ function skyAt(el) {
 }
 
 export class Lighting {
-  constructor(map, meta, wxAtlas = null) {
+  /**
+   * @param {object} [opts]
+   * @param {string|null} [opts.groundLayer] Raster layer to dim at night.
+   *   Defaults to this site's "imagery". An embedder names its own basemap, and
+   *   passing null turns ground dimming off entirely.
+   */
+  constructor(map, meta, wxAtlas = null, opts = {}) {
     this.map = map;
+    // Named rather than assumed. The try/catch below was load-bearing for a
+    // style without an "imagery" layer, but MapLibre also FIRES an error event
+    // for a missing layer, so an embedded copy logged "Cannot style
+    // non-existing layer" on every sun update — a console full of noise for a
+    // condition that is completely normal.
+    this.groundLayer = opts.groundLayer === undefined ? "imagery" : opts.groundLayer;
     this.meta = meta;
     this.wx = wxAtlas; // optional shared CpuAtlas for DSWRF cloud dimming
     this.enabled = true;
@@ -128,15 +140,22 @@ export class Lighting {
     } catch { /* no sky support */ }
   }
 
+  // Dim the basemap, if there is one to dim and it is currently in the style.
+  paintGround(brightness, saturation) {
+    const id = this.groundLayer;
+    if (!id || !this.map.getLayer(id)) return;
+    try {
+      this.map.setPaintProperty(id, "raster-brightness-max", brightness);
+      this.map.setPaintProperty(id, "raster-saturation", saturation);
+    } catch { /* not a raster layer; leave it alone */ }
+  }
+
   applyGround(elevationDeg) {
     // Imagery day/night: full brightness above +10 deg, floor below civil
     // twilight. DSWRF (clouds) can only darken the daytime end.
     const day = smooth(-6, 10, elevationDeg);
     const b = (0.40 + 0.60 * day) * (this.enabled ? this.cloudDim : 1);
-    try {
-      this.map.setPaintProperty("imagery", "raster-brightness-max", Math.max(0.34, b));
-      this.map.setPaintProperty("imagery", "raster-saturation", -0.45 * (1 - day));
-    } catch { /* style may not have the imagery layer */ }
+    this.paintGround(Math.max(0.34, b), -0.45 * (1 - day));
   }
 
   // Cloud-attenuated sunlight: compare the forecast downward shortwave at the
@@ -173,9 +192,8 @@ export class Lighting {
           "fog-color": rgb(KEYS[3].horizon),
           "sky-horizon-blend": 0.7,
         });
-        this.map.setPaintProperty("imagery", "raster-brightness-max", 1);
-        this.map.setPaintProperty("imagery", "raster-saturation", 0);
       } catch { /* ignore */ }
+      this.paintGround(1, 0);
       this.state = { ...this.state, sunColor: [1, 1, 1], ambient: 1, nightFactor: 0 };
     } else {
       this.update(true);
