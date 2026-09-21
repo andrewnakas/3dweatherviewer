@@ -29,7 +29,14 @@ export class CloudLayer {
     this.density = 1.0;
     this.grid = opts.grid ?? 72;      // G x G lattice cells
     this.layers = opts.layers ?? 3;   // vertical slots per cell
-    window.addEventListener("windtime", (e) => { this.time = e.detail; });
+  // Kept, so it can be removed. The standalone viewer builds these layers once
+  // and lives until the tab closes, so an anonymous listener was free. Embedded
+  // in an app that tears the weather stack down and rebuilds it — every 2D/3D
+  // switch, every basemap change — each rebuild left a dead layer subscribed to
+  // the clock, still writing this.time, and still holding its GL objects and
+  // atlas references alive. One leak per switch.
+    this._onTime = (e) => { this.time = e.detail; };
+    window.addEventListener("windtime", this._onTime);
   }
 
   onAdd(map, gl) {
@@ -68,7 +75,10 @@ export class CloudLayer {
     }
   }
 
-  onRemove() { /* nothing owned beyond GL objects the context reclaims */ }
+  onRemove() {
+    // GL objects go with the context; the clock subscription does not.
+    window.removeEventListener("windtime", this._onTime);
+  }
 
   render(gl, matrix) {
     if (!this.wxFrames) return;

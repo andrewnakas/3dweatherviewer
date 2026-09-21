@@ -153,4 +153,22 @@ export class FrameManager {
       this.textures.delete(lead);
     }
   }
+
+  // Release every texture this manager owns.
+  //
+  // Eviction alone is not enough: the cache deliberately KEEPS cacheMax frames,
+  // so dropping the manager leaves those — plus the terrain texture, the
+  // largest single one — resident with nothing referencing them. In the
+  // standalone viewer that never happens; in an app that rebuilds the weather
+  // stack on a mode switch it is several atlases of GPU memory per switch, and
+  // running out of it is what a context loss looks like from the outside.
+  dispose() {
+    for (const tex of this.textures.values()) this.gl.deleteTexture(tex);
+    this.textures.clear();
+    this.lru.length = 0;
+    if (this.terrainTex) {
+      this.gl.deleteTexture(this.terrainTex);
+      this.terrainTex = null;
+    }
+  }
 }

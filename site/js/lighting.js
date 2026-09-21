@@ -63,9 +63,21 @@ export class Lighting {
       nightFactor: 0, elevationDeg: 90,
     };
     this._last = 0;
-    window.addEventListener("windtime", (e) => { this.time = e.detail; this.update(); });
-    map.on("moveend", () => this.update(true));
+    // Both handlers are kept so dispose() can drop them. The standalone viewer
+    // builds one Lighting and never takes it down; an app that rebuilds the
+    // weather stack on every 2D/3D switch would otherwise accumulate one dead
+    // Lighting per switch, each still recomputing a sky gradient six times a
+    // second and each still holding the whole weather atlas alive.
+    this._onTime = (e) => { this.time = e.detail; this.update(); };
+    this._onMove = () => this.update(true);
+    window.addEventListener("windtime", this._onTime);
+    map.on("moveend", this._onMove);
     this.update(true);
+  }
+
+  dispose() {
+    window.removeEventListener("windtime", this._onTime);
+    this.map.off("moveend", this._onMove);
   }
 
   validDate() {
