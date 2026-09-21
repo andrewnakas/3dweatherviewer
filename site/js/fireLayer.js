@@ -10,7 +10,7 @@
 // Texture units: 10 fire data, 13 hi-res terrain.
 
 import { FIRE_VERT, FIRE_FRAG } from "./fireShaders.js";
-import { compile, uniforms, makeBlankTex, cameraDomainPos, metersToMercator } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, cameraDomainPos, metersToMercator, customLayerMatrix } from "./glutil.js";
 
 const TEX_W = 256; // fires are laid out row-major in a 256-wide float texture
 
@@ -83,7 +83,10 @@ export class FireLayer {
     this.fireTex = null;
   }
 
-  render(gl, matrix) {
+  render(gl, arg) {
+    // See customLayerMatrix: v4 handed us the mat4, v5 hands an object.
+    const matrix = customLayerMatrix(arg);
+    if (!matrix) return;
     if (!this.enabled || !this.count || !this.fireTex) return;
 
     const b = this.meta.bounds;

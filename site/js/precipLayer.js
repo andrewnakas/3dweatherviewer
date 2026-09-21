@@ -11,7 +11,7 @@
 //   14/15 wind atlas A/B.
 
 import { QUAD_VERT, PRECIP_UPDATE_FRAG, PRECIP_DRAW_VERT, PRECIP_DRAW_FRAG } from "./precipShaders.js";
-import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, metersToMercator } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, metersToMercator, customLayerMatrix } from "./glutil.js";
 
 class PrecipState {
   constructor(gl, size) {
@@ -180,7 +180,10 @@ export class PrecipLayer {
     gl.activeTexture(gl.TEXTURE0);
   }
 
-  render(gl, matrix) {
+  render(gl, arg) {
+    // See customLayerMatrix: v4 handed us the mat4, v5 hands an object.
+    const matrix = customLayerMatrix(arg);
+    if (!matrix) return;
     if (this.disabled || !this.system || !this.wxFrames) return;
     const sys = this.system;
     const wxPair = this.wxFrames.getPair(this.time);

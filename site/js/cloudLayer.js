@@ -7,7 +7,7 @@
 // same units are safe).
 
 import { CLOUD_VERT, CLOUD_FRAG, QC_LEVELS, SMOKE_LEVELS } from "./cloudShaders.js";
-import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice, metersToMercator } from "./glutil.js";
+import { compile, uniforms, makeBlankTex, computeSpawnBounds, cameraDomainPos, tieredLattice, metersToMercator, customLayerMatrix } from "./glutil.js";
 
 export class CloudLayer {
   constructor(map, meta, windLayer, lighting, wxShared, opts = {}) {
@@ -80,7 +80,10 @@ export class CloudLayer {
     window.removeEventListener("windtime", this._onTime);
   }
 
-  render(gl, matrix) {
+  render(gl, arg) {
+    // See customLayerMatrix: v4 handed us the mat4, v5 hands an object.
+    const matrix = customLayerMatrix(arg);
+    if (!matrix) return;
     if (!this.wxFrames) return;
     const pair = this.wxFrames.getPair(this.time);
     this.wxFrames.prefetch(this.time);

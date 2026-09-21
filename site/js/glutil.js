@@ -165,3 +165,19 @@ export const EARTH_CIRCUMFERENCE = 40075016.686;
 export function metersToMercator(latitude) {
   return 1 / (EARTH_CIRCUMFERENCE * Math.cos((latitude * Math.PI) / 180));
 }
+
+// The matrix a custom layer is handed, across MapLibre major versions.
+//
+// Through v4 the second argument of render() WAS the matrix: a mat4 taking
+// mercator [0,1] coordinates with altitude in mercator units. v5 passes an
+// options object instead, and the same matrix moved to
+// `defaultProjectionData.mainMatrix`. Passing the object straight to
+// uniformMatrix4fv fails with "The object must have a callable @@iterator
+// property", which says nothing at all about what actually changed.
+//
+// Reading either keeps one copy of these layers working on both.
+export function customLayerMatrix(arg) {
+  if (!arg) return null;
+  if (ArrayBuffer.isView(arg) || Array.isArray(arg)) return arg;
+  return arg.defaultProjectionData?.mainMatrix ?? arg.modelViewProjectionMatrix ?? null;
+}
